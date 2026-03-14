@@ -1,0 +1,74 @@
+# StreamCaster CI — builds both flavors, runs unit tests, and verifies
+# that the FOSS flavor contains no Google Mobile Services dependencies
+# (required for F-Droid compliance).
+
+name: Build & Test
+
+# When does this workflow run?
+#   - On every push to the main branch
+#   - On every pull request targeting main
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel redundant runs when new commits land on the same PR/branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Check out the repository ──
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Install JDK 17 (required by AGP / Kotlin) ──
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin   # Eclipse Temurin is a popular, free JDK
+          java-version: 17
+
+      # ── 3. Cache Gradle files so repeat builds are faster ──
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      # ── 4. Make the Gradle wrapper script executable ──
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # ── 5. Build both flavors (FOSS for F-Droid, GMS for Play Store) ──
+      - name: Build FOSS and GMS debug APKs
+        run: ./gradlew assembleFossDebug assembleGmsDebug
+
+      # ── 6. Run unit tests against the FOSS flavor ──
+      - name: Run FOSS unit tests
+        run: ./gradlew testFossDebugUnitTest
+
+      # ── 7. F-Droid GMS guard — the FOSS flavor must never pull in any
+      #    Google Mobile Services library. If grep finds a match the step
+      #    fails, blocking the PR from merging.
+      - name: Verify FOSS flavor has no GMS dependencies
+        run: |
+          # List all runtime dependencies for the FOSS release configuration
+          # and search for any reference to Google Mobile Services.
+          # "grep -i gms" returns exit code 0 if it finds a match (bad!),
+          # so we invert the logic: the step passes only when grep finds nothing.
+          MATCHES=$(./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::FOSS flavor must not depend on GMS. Found:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "✅ No GMS dependencies found in FOSS flavor."
