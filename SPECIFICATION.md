@@ -403,7 +403,7 @@ App Launch
 | **Main / Stream** | Camera preview (full-screen), start/stop button, mute button, camera-switch button, stream status badge, recording indicator. Minimal HUD overlay showing: bitrate, FPS, duration, connection status. |
 | **Endpoint Setup** | RTMP(S) URL field, stream key field, optional username/password, "Test Connection" button, "Save as Default" toggle, saved profiles list. |
 | **Video/Audio Settings** | Resolution picker (filtered by device), frame rate picker, video bitrate slider, audio bitrate picker, mono/stereo toggle, ABR enable/disable, keyframe interval, local recording toggle. |
-| **General Settings** | Default camera (front/back), orientation lock (portrait/landscape), auto-reconnect toggle + retry settings, battery threshold, media stream selection (video+audio / video-only / audio-only). |
+| **General Settings** | Default camera (front/back), orientation mode (landscape default, explicit portrait toggle), auto-reconnect toggle + retry settings, battery threshold, media stream selection (video+audio / video-only / audio-only). |
 
 ### 10.2 Navigation
 
@@ -450,6 +450,7 @@ Single-activity architecture with Compose Navigation.
 | **Thermal throttle** | On `THERMAL_STATUS_MODERATE`: warn user via HUD badge. On `THERMAL_STATUS_SEVERE`: step down ABR ladder with controlled encoder restart if needed (minimum 60 s between steps). On `THERMAL_STATUS_CRITICAL`: stop stream and recording gracefully, display reason to user. |
 | **FGS killed by OS** | Do not silently restart. On next activity launch, display notification/toast indicating session ended. Require user to start a new session. |
 | **Low battery** | Below configured threshold: show warning. Below critical (≤ 2%): auto-stop stream and finalize local recording. |
+| **Prolonged session** | On low-end devices, app monitors session duration. When exceeding safe continuous duration, show notification recommending stopping to prevent heat/battery risk. Excluded if device is explicitly on external power. |
 | **Insufficient storage** | Stop recording, continue streaming, notify user. |
 | **Audio focus loss / incoming call** | Mute microphone and show muted indicator. Resume sending audio only on explicit user action (unmute button). |
 
@@ -709,6 +710,8 @@ android {
 | 6 | minSdk | **API 23** (raised from 21). Required for EncryptedSharedPreferences, reliable Keystore, and runtime permissions. Drops ~1% of active devices with no viable workaround. |
 | 7 | Camera framework | **RootEncoder `RtmpCamera2` exclusively.** CameraX removed to avoid surface contention. Camera1 path removed (unnecessary with minSdk 23). |
 | 8 | Transport security default | **RTMPS enforced when auth/keys are present.** RTMP with credentials requires explicit per-attempt user opt-in. |
+| 9 | Orientation support | **Landscape first.** UX relies on landscape as primary, providing an option for portrait that the user must explicitly toggle. |
+| 10 | Session duration limit | **Recommendation-based.** On low-end devices, app monitors session duration and issues a notification recommending stopping to prevent heat/battery drain, unless connected to power. |
 
 ---
 
@@ -730,12 +733,3 @@ The following criteria are testable conditions that must pass before the corresp
 | AC-10 | Local recording on API 29+ uses MediaStore or SAF. If the user has not granted storage access, recording fails fast with a user prompt; streaming is not blocked. |
 | AC-11 | On incoming phone call, the app mutes the microphone and displays a muted indicator. Audio resumes only on explicit user unmute. |
 | AC-12 | Camera revocation in background switches to audio-only. Returning to foreground re-acquires camera and resumes video with an IDR frame. |
-
----
-
-## 21. Open Questions
-
-| # | Question | Impact |
-|---|---|---|
-| OQ-01 | Do we permit any tablet or landscape-only devices, or is phone portrait-first the only supported UX? | Affects layout validation, device test matrix, and orientation handling. |
-| OQ-02 | Should there be a maximum session duration to limit heat and battery risk on low-end devices? | Affects UX (forced stop) and thermal strategy. |
