@@ -80,6 +80,7 @@ The following are explicitly out of scope for the current version:
 | **Camera/encoder** | Hardware H.264 (Baseline/Main) + AAC-LC expected. H.265 is deferred. Devices without a hardware H.264 encoder are unsupported. |
 | **Network** | Hostile networks assumed. RTMPS is the preferred transport. RTMP is permitted only with explicit user consent (see §9). |
 | **OEM posture** | Aggressive battery/FGS restrictions (Samsung, Xiaomi, Huawei, etc.) assumed active. Doze and app-standby are assumed active. The app must not rely on behavior that only works with battery optimizations disabled. |
+| **App Standby Buckets** | API 28+ may classify infrequently used apps into the `RARE` bucket, restricting background network access. A user-initiated FGS start from the foreground exempts the app for that session. Connection retry logic must tolerate one initial network failure and retry on `ConnectivityManager.NetworkCallback.onAvailable()` rather than assuming network availability at FGS start. |
 
 ---
 
@@ -92,8 +93,8 @@ The following are explicitly out of scope for the current version:
 | MC-01 | Stream **video only**, **audio only**, or **both** — user selects before or during stream. Mid-session video→audio downgrade is permitted; audio→video upgrade requires camera reacquire and encoder re-init. | Must |
 | MC-02 | Default to **back camera**. User can switch to front camera before or during stream. | Must |
 | MC-03 | Live camera preview displayed before and during streaming. Preview must rebind after process death or activity recreation if the service is still alive. | Must |
-| MC-04 | Orientation (portrait / landscape) selected by user before stream start; locked for the duration of the active session; unlocked only when idle. | Must |
-| MC-05 | **Local recording** — optional toggle to save a local MP4 copy simultaneously. On API 29+, the user selects a storage target via SAF or the app writes to MediaStore. On API 23–28, the app writes to app-specific external storage (`getExternalFilesDir`) with an export/share flow. If storage permission is denied or unavailable, recording must fail fast with a user prompt; streaming must not be blocked. | Must |
+| MC-04 | Orientation (portrait / landscape) selected by user before stream start; locked for the duration of the active session; unlocked only when idle. The lock must be applied in `Activity.onCreate()` before `setContentView()` using the persisted orientation preference — not as a post-stream-start action. When a stream is active, the lock is applied unconditionally on every `onCreate()` to prevent a re-orientation race during Activity recreation that would trigger a second configuration-change cycle and corrupt the Surface/preview state. | Must |
+| MC-05 | **Local recording** — optional toggle to save a local MP4 copy simultaneously. On API 29+, the user selects a storage target via SAF or the app writes to MediaStore; enabling the toggle must immediately trigger an `ACTION_OPEN_DOCUMENT_TREE` SAF picker and persist the resulting URI via `takePersistableUriPermission()` — recording must not be activatable without a valid persisted storage grant. Local recording must tee encoded output buffers from the single hardware encoder into both the RTMP muxer and the MP4 muxer; no second encoder instance may be opened. On API 23–28, the app writes to app-specific external storage (`getExternalFilesDir`) with an export/share flow. If storage permission is denied or unavailable, recording must fail fast with a user prompt; streaming must not be blocked. | Must |
 
 ### 4.2 Video Settings
 
@@ -141,12 +142,12 @@ The following are explicitly out of scope for the current version:
 | ID | Requirement | Priority |
 |---|---|---|
 | SL-01 | **Start / Stop** stream via prominent button. | Must |
-| SL-02 | **Auto-reconnect** on network drop — configurable retry count (default: unlimited) and interval using exponential backoff with jitter (3 s, 6 s, 12 s, …, cap 60 s). Reconnect must operate within an already-running FGS; no new FGS starts from background. Respect Doze: retries must not exceed one attempt per minute while the device is in idle mode unless the user has exempted the app from battery optimizations. | Must |
-| SL-03 | **Background streaming** — continues via foreground service when app is backgrounded or screen is off. The FGS may only be started from a user-initiated action (in-app button or notification action) while the activity is in the foreground or within the allowed post-activity window (API 31+ FGS start restrictions). | Must |
+| SL-02 | **Auto-reconnect** on network drop — configurable retry count (default: unlimited) and interval using exponential backoff with jitter (3 s, 6 s, 12 s, …, cap 60 s). Reconnect must operate within an already-running FGS; no new FGS starts from background. Reconnect attempts must be driven by `ConnectivityManager.NetworkCallback.onAvailable()` events in addition to the backoff timer; timer-based retries are suppressed while the device is in Doze to avoid burning backoff steps against Doze-blocked sockets — reconnect fires on `onAvailable()`, which already aligns with Doze maintenance windows. | Must |
+| SL-03 | **Background streaming** — continues via foreground service when app is backgrounded or screen is off. The FGS may only be started from a user-initiated action (in-app button) while the activity is in the foreground (API 31+ FGS start restrictions). Notification actions cannot start a new FGS; see §7.1. | Must |
 | SL-04 | **Notification controls** — start/stop/mute accessible from the persistent notification. A stop action must cancel any in-flight reconnect and leave the stream fully stopped. Actions must be debounced to prevent double-toggle races. | Must |
 | SL-05 | Graceful shutdown on low battery (configurable threshold, default 5%). Auto-stop and finalize local recording at critical (≤ 2%). | Should |
 | SL-06 | **Background camera revocation handling** — when the OS revokes camera access in the background, cleanly stop the video track, keep the audio-only RTMP session alive (or send a static placeholder frame if video-only mode). Show "Camera paused" in the notification. On return to foreground, re-acquire camera, re-init video encoder, and send an IDR frame to resume video. | Must |
-| SL-07 | **Thermal throttling response** — on API 29+, register `PowerManager.OnThermalStatusChangedListener`. On `THERMAL_STATUS_MODERATE`: show HUD warning. On `THERMAL_STATUS_SEVERE`: step down the ABR ladder (e.g., 720p→480p, 30→15 fps), performing a controlled encoder restart if resolution/fps change requires it. On `THERMAL_STATUS_CRITICAL`: stop stream and recording gracefully and show the user the reason. Enforce a minimum 60-second cooldown between thermal step changes to avoid rapid oscillation. Restore quality when thermals return to normal. | Must |
+| SL-07 | **Thermal throttling response** — on API 29+, register `PowerManager.OnThermalStatusChangedListener`. On `THERMAL_STATUS_MODERATE`: show HUD warning. On `THERMAL_STATUS_SEVERE`: step down the ABR ladder (e.g., 720p→480p, 30→15 fps), performing a controlled encoder restart if resolution/fps change requires it. On `THERMAL_STATUS_CRITICAL`: stop stream and recording gracefully and show the user the reason. Enforce a minimum 60-second cooldown between thermal-triggered step changes to avoid rapid oscillation. Restore quality when thermals return to normal. On **API 23–28** (where `OnThermalStatusChangedListener` is unavailable), register a `BroadcastReceiver` for `Intent.ACTION_BATTERY_CHANGED` and monitor `BatteryManager.EXTRA_TEMPERATURE`; apply the same degradation progression when temperature exceeds 38°C (warn / bitrate reduction), with graceful stream stop at ≥ 43°C. | Must |
 | SL-08 | **Audio focus / interruption handling** — on incoming call or audio focus loss, mute the microphone and show a muted indicator. Resume sending audio only on explicit user action (unmute). | Must |
 
 ### 4.7 Overlay Architecture (Future)
@@ -166,13 +167,13 @@ The following are explicitly out of scope for the current version:
 |---|---|---|
 | NF-01 | **Startup to preview** in < 2 seconds on mid-range devices. | Must |
 | NF-02 | **Streaming latency** (glass-to-glass) ≤ 3 seconds over stable LTE. Surface as a debug metric if exceeded. | Should |
-| NF-03 | **Battery drain** ≤ 15% per hour of streaming at 720p30 on a 4000 mAh battery. | Should |
+| NF-03 | **Battery drain** ≤ 15% per hour of streaming at 720p30 on the reference device class (mid-range, 4000 mAh, API 28+). Low-end API 23 devices are not bound by this target; measured drain on low-end hardware must be documented in the test report. | Should |
 | NF-04 | **Crash-free rate** ≥ 99.5%. | Must |
 | NF-05 | **APK size** < 15 MB (before Play Store optimization). | Should |
 | NF-06 | No third-party analytics or tracking SDKs. | Must |
 | NF-07 | All sensitive data (stream keys, passwords) must be stored encrypted via Android Keystore-backed EncryptedSharedPreferences. The app must never fall back to plaintext storage. | Must |
 | NF-08 | **No custom SSL bypass.** RTMPS connections must use the system default `TrustManager`. No `X509TrustManager` that accepts all certificates. Users with self-signed certs install them via Android system settings. | Must |
-| NF-09 | **Thermal awareness.** On API 29+, register `OnThermalStatusChangedListener`. Progressively degrade stream quality to prevent device overheating and OS-forced frame drops. See SL-07. | Must |
+| NF-09 | **Thermal awareness.** On API 29+, register `OnThermalStatusChangedListener`. On API 23–28, fall back to `BatteryManager.EXTRA_TEMPERATURE` via `ACTION_BATTERY_CHANGED` broadcasts. Progressively degrade stream quality to prevent device overheating and OS-forced frame drops. See SL-07. | Must |
 
 ---
 
@@ -227,7 +228,7 @@ The following are explicitly out of scope for the current version:
 
 | Component | Responsibility |
 |---|---|
-| `StreamViewModel` | Binds to `StreamingService`. Reads authoritative streaming state (idle / connecting / live / reconnecting / stopped). Exposes preview surface, stream stats, and control actions. All start/stop/mute commands are idempotent. |
+| `StreamViewModel` | Binds to `StreamingService`. Reads authoritative streaming state modelled as a `sealed class StreamState`: `Idle`, `Connecting`, `Live(cameraActive: Boolean)`, `Reconnecting`, `Stopping`, `Stopped(reason: StopReason)` where `StopReason` is `USER_REQUEST`, `ERROR_ENCODER`, `ERROR_AUTH`, `ERROR_CAMERA`, `THERMAL_CRITICAL`, or `BATTERY_CRITICAL`. Exposes preview surface, stream stats, and control actions. All start/stop/mute commands are idempotent. |
 | `SettingsViewModel` | Reads/writes user preferences. Queries device for supported resolutions, frame rates, and codec profiles via `DeviceCapabilityQuery`. |
 | `StreamingService` | Android Foreground Service (`camera` + `microphone` types). Owns the RootEncoder instance. Is the **single source of truth** for stream state. Manages lifecycle independently of the Activity so streaming survives backgrounding. Exposes state via `StateFlow` to bound clients. |
 | `DeviceCapabilityQuery` | Queries `CameraManager` and `MediaCodecList` for available cameras, resolutions, frame rates, and codec profiles/levels. Used by settings UI only — does NOT own the camera or open it. |
@@ -264,8 +265,9 @@ Camera switching and preview attachment are delegated directly to `RtmpCamera2.s
 
 ### 7.1 Foreground Service Rules
 
-- The foreground service declares types `camera` and `microphone` (API 34+ manifest declarations: `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`).
-- The FGS may only be started from a **user-initiated action**: the in-app Start button while the Activity is in the foreground, or a notification action. This satisfies API 31+ FGS start restrictions.
+- The foreground service must declare `android:foregroundServiceType="camera|microphone"` in the manifest `<service>` element. This attribute is required from **API 30** to legally access the camera or microphone from an FGS. Additionally, `<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />` and `FOREGROUND_SERVICE_MICROPHONE` are required as explicit permissions from **API 34**.
+- The FGS may only be started from a **user-initiated action**: the in-app Start button while the Activity is in the foreground. This satisfies API 31+ FGS start restrictions.
+- **Notification actions cannot start a new FGS.** On API 34+, calling `startForegroundService()` with camera/microphone types from a `BroadcastReceiver` `PendingIntent` while the app is not in the foreground throws `BackgroundServiceStartNotAllowedException`. The notification "Start" action must deep-link to the Activity via an explicit `Intent`; it must never call `startForegroundService()` directly. Notification Stop and Mute/Unmute remain valid controls on an **already-running** FGS.
 - Auto-reconnect operates within an already-running FGS. The app must never attempt to start a new FGS from the background without a user affordance.
 - If the OS kills the FGS, the app must not silently restart it. On next activity launch, display a notification or in-app message indicating the session ended and require the user to start a new session.
 
@@ -274,11 +276,13 @@ Camera switching and preview attachment are delegated directly to `RtmpCamera2.s
 - `StreamViewModel` binds to `StreamingService` via `ServiceConnection`.
 - The service exposes authoritative state via `StateFlow<StreamState>`. The UI layer is a read-only observer of this state.
 - On activity recreation (config change, process death with surviving service), the ViewModel must rebind, restore the preview surface to the existing RootEncoder instance, and reflect current stats.
-- If the service has been killed by the time the activity restarts, the ViewModel must show "Stopped" state and clear any stale reconnect state.
+- If the service has been killed by the time the activity restarts, the ViewModel must show `Stopped(USER_REQUEST)` state and clear any stale reconnect state.
+- The ViewModel must hold the preview surface reference as a `WeakReference<SurfaceHolder>` or use a `SurfaceRequest`-style signal. The Activity/Composable sets this reference on `surfaceCreated()` and clears it on `surfaceDestroyed()`. The ViewModel must never retain a strong reference to a `View` or `Surface` across Activity lifecycle boundaries.
 
 ### 7.3 Process Death Recovery
 
 - If the service is alive and the activity process is recreated, the preview surface must be re-attached to RootEncoder's existing camera session.
+- When rebinding after process death, `RtmpCamera2.startPreview()` must not be called until `SurfaceHolder.Callback.surfaceCreated()` has fired on the new `SurfaceView`. The ViewModel must gate the preview attach using a `CompletableDeferred<SurfaceHolder>` or equivalent surface-ready signal resolved by the `AndroidView` composable. Calling `startPreview()` before the Surface is attached causes the camera HAL to throw `IllegalArgumentException: invalid surface`.
 - If both activity and service are dead, the app starts in the default idle state. No automatic stream resumption occurs.
 
 ### 7.4 Notification Behavior
@@ -296,6 +300,7 @@ Camera switching and preview attachment are delegated directly to `RtmpCamera2.s
 
 - Before starting a stream, validate the chosen resolution, frame rate, and profile against `MediaCodecInfo.CodecCapabilities` and `VideoCapabilities`. If the device cannot support the requested configuration, fail fast with an actionable error message and suggest a supported configuration.
 - Pre-flight: attempt `MediaCodec.configure()` with the chosen parameters before connecting to the RTMP endpoint to catch encoder failures early.
+- During streaming, monitor the actual encoded output frame rate (frames delivered from the `MediaCodec` output buffer) against the configured input fps. If measured output fps falls below 80% of configured fps for more than 5 consecutive seconds, treat this as a backpressure event and trigger the ABR step-down path. This detects hardware-level encoder throttling that `MediaCodecInfo.VideoCapabilities.isSizeAndRateSupported()` cannot predict under sustained thermal load (particularly on MediaTek/Unisoc SoCs).
 
 ### 8.2 ABR Ladder
 
@@ -305,6 +310,8 @@ Camera switching and preview attachment are delegated directly to `RtmpCamera2.s
   - Bitrate scales proportionally to resolution × fps.
 - ABR first reduces bitrate only. If insufficient, step down resolution/fps via controlled encoder restart.
 - Prefer bitrate reduction before frame skipping. If encoder backpressure is detected, drop non-keyframes first.
+- All quality-change requests from **both** the ABR system and the thermal throttling system (SL-07) must be serialized through a single `EncoderController` component using a coroutine `Mutex` or `Channel`. This prevents concurrent `MediaCodec.release()` / `configure()` / `start()` sequences from racing and throwing `IllegalStateException` when both systems fire within the same window (e.g., network degrades while device heats).
+- The 60-second thermal cooldown (SL-07) applies only to **thermal-triggered** resolution/fps changes that require an encoder restart. ABR **bitrate-only** reductions and recoveries do not require an encoder restart and bypass the cooldown entirely. ABR resolution/fps changes that do require an encoder restart are subject to the cooldown timer.
 
 ### 8.3 Encoder Restart for Quality Changes
 
@@ -336,6 +343,8 @@ Camera switching and preview attachment are delegated directly to `RtmpCamera2.s
 - Stream keys and passwords must be stored using EncryptedSharedPreferences backed by Android Keystore.
 - The app must never fall back to plaintext storage under any circumstance.
 - MinSdk 23 guarantees Keystore availability. No API < 23 fallback path exists or is needed.
+- The FGS must never receive stream keys or RTMP URLs with embedded credentials via `Intent` extras. The FGS start `Intent` carries only a non-sensitive profile ID (`String` or `Long`); the service retrieves credentials directly from `EndpointProfileRepository` at runtime. This prevents key exfiltration via `adb shell dumpsys activity service` or crash-report Intent capture.
+- The manifest must declare `android:allowBackup="false"` in the `<application>` element, or configure a `BackupAgent` with rules that exclude the EncryptedSharedPreferences files from cloud and device-to-device backup. When the app is installed on a new device after a restore and the Keystore key is absent, it must display an explicit prompt informing the user that credentials must be re-entered.
 
 ### 9.2 Transport Security
 
@@ -350,8 +359,11 @@ Camera switching and preview attachment are delegated directly to `RtmpCamera2.s
 - All sensitive fields must be masked in logs and metrics (e.g., `rtmp://host/app/****`).
 - ACRA crash reports must:
   - Exclude or redact RTMP URLs, stream keys, and auth fields from all `ReportField` entries.
-  - Disable automatic logcat attachment unless a custom scrubber has sanitized the output.
-  - Send reports only to user-configured endpoints (HTTP or email).
+  - Fully exclude `ReportField.SHARED_PREFERENCES` and `ReportField.LOGCAT` from all report configurations.
+  - Disable automatic logcat attachment **unconditionally in release builds**. RootEncoder logs full RTMP URLs (including stream key path segments) at `Log.d`/`Log.i` level internally; these cannot be safely scrubbed after they enter Logcat.
+  - Apply a URL-sanitization transformation to all remaining string-valued fields before any field is serialized: replace key path segments using the pattern `rtmp[s]?://([^/\s]+/[^/\s]+)/\S+` → `rtmp[s]://<host>/<app>/****`.
+  - Include a unit test verifying that a synthetic crash report containing a known stream key string produces zero occurrences of that string after the sanitization pass.
+  - Send reports only to user-configured endpoints. ACRA HTTP transport must enforce **HTTPS**. If the user configures a plain `http://` endpoint, the app must display a warning and require explicit opt-in. Plaintext crash report transmission must never occur silently.
 
 ### 9.4 Permissions
 
@@ -360,8 +372,8 @@ Camera switching and preview attachment are delegated directly to `RtmpCamera2.s
 | `CAMERA` | Stream start (video modes) | Video capture |
 | `RECORD_AUDIO` | Stream start (audio modes) | Audio capture |
 | `FOREGROUND_SERVICE` | Manifest (auto-granted) | Background streaming |
-| `FOREGROUND_SERVICE_CAMERA` | Manifest (API 34+) | FGS type declaration |
-| `FOREGROUND_SERVICE_MICROPHONE` | Manifest (API 34+) | FGS type declaration |
+| `FOREGROUND_SERVICE_CAMERA` | Manifest (API 34+) | FGS type permission (`<uses-permission>`). Distinct from `android:foregroundServiceType` attribute, which is required from API 30. |
+| `FOREGROUND_SERVICE_MICROPHONE` | Manifest (API 34+) | FGS type permission (`<uses-permission>`). Distinct from `android:foregroundServiceType` attribute, which is required from API 30. |
 | `POST_NOTIFICATIONS` | Runtime (API 33+) | FGS notification display |
 | `INTERNET` | Manifest (auto-granted) | RTMP connection |
 | `WAKE_LOCK` | Manifest (auto-granted) | Keep CPU alive during background stream |
@@ -416,7 +428,24 @@ Main (Stream) ──┬── Endpoint Setup
 Single-activity architecture with Compose Navigation.
 
 ### 10.3 Stream Screen HUD Layout
+Since landscape is the primary UX (see §19 Decision 9), the landscape layout is the normative reference. Portrait is a secondary option explicitly toggled by the user.
 
+#### Landscape (Default)
+
+```
+┌──────────────────────────────────────────────────┐
+│ ● LIVE  00:12:34   ⇕ 2.4 Mbps  30fps  720p   🔴 REC │  ← status bar
+│                                          ┌────────┐ │
+│                                          │[🔇 Mute]│ │
+│         [Camera Preview]                │[⏺ START]│ │
+│     (fills width, 16:9 aspect ratio)    │[🔄 Cam ]│ │
+│                                          └────────┘ │
+└──────────────────────────────────────────────────┘
+```
+
+Controls are at the right edge in landscape to remain within thumb reach. All UI elements must respect `WindowInsets.displayCutout` and `WindowInsets.navigationBars` to avoid occlusion by system UI or camera cutouts.
+
+#### Portrait (User-Toggled)
 ```
 ┌──────────────────────────────────────┐
 │ ● LIVE  00:12:34        🔴 REC      │  ← status bar
@@ -450,7 +479,7 @@ Single-activity architecture with Compose Navigation.
 | **Thermal throttle** | On `THERMAL_STATUS_MODERATE`: warn user via HUD badge. On `THERMAL_STATUS_SEVERE`: step down ABR ladder with controlled encoder restart if needed (minimum 60 s between steps). On `THERMAL_STATUS_CRITICAL`: stop stream and recording gracefully, display reason to user. |
 | **FGS killed by OS** | Do not silently restart. On next activity launch, display notification/toast indicating session ended. Require user to start a new session. |
 | **Low battery** | Below configured threshold: show warning. Below critical (≤ 2%): auto-stop stream and finalize local recording. |
-| **Prolonged session** | On low-end devices, app monitors session duration. When exceeding safe continuous duration, show notification recommending stopping to prevent heat/battery risk. Excluded if device is explicitly on external power. |
+| **Prolonged session** | On low-end devices (`ActivityManager.isLowRamDevice() == true` or available RAM < 2 GB at stream start), app monitors session duration. After a configurable default of 90 minutes (adjustable in General Settings), show a notification recommending stopping to prevent heat/battery risk. Suppressed if `BatteryManager.isCharging()` is `true` at recommendation time. |
 | **Insufficient storage** | Stop recording, continue streaming, notify user. |
 | **Audio focus loss / incoming call** | Mute microphone and show muted indicator. Resume sending audio only on explicit user action (unmute button). |
 
@@ -630,6 +659,22 @@ android {
 
 **Rule:** No `com.google.android.gms`, Firebase, or proprietary library may appear in the `foss` dependency tree. CI must verify this via a `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms` check that fails the build if any match is found.
 
+**F-Droid APK size:** To keep per-download size within the 15 MB target (NF-05), configure Gradle ABI splits for the `foss` release variant. A universal APK including all four RootEncoder native ABI variants would exceed 15 MB.
+
+```kotlin
+// app/build.gradle.kts
+splits {
+    abi {
+        isEnable = true
+        reset()
+        include("arm64-v8a", "armeabi-v7a")
+        isUniversalApk = false
+    }
+}
+```
+
+F-Droid supports multi-APK submissions. The 15 MB target applies per-ABI APK, not the universal binary.
+
 ---
 
 ## 17. Phased Implementation Plan
@@ -695,6 +740,9 @@ android {
 | FGS start restrictions (API 31+) | Cannot start streaming from background | FGS starts only from user-initiated actions while activity is foregrounded or via notification action. Auto-reconnect operates within an already-running FGS only. |
 | Encoder does not support requested config | Crash or silent failure on stream start | Pre-flight validate against `MediaCodecInfo` before connecting. Fail fast with actionable suggestion. |
 | F-Droid build rejected due to proprietary dependencies | Cannot distribute on F-Droid | Use Gradle product flavors (`foss` / `gms`). CI verifies no GMS in `foss` dependency tree. See §16.1. |
+| Concurrent ABR + thermal encoder restart | FGS crash from `MediaCodec.IllegalStateException` when both systems trigger an encoder re-init simultaneously | All quality-change requests serialized through `EncoderController` with a coroutine `Mutex`. See §8.2. |
+| Stream key exfiltration via Intent extra | Credentials visible via `adb shell dumpsys activity service` or captured in ACRA crash report Intent bundle | FGS start `Intent` carries only a profile ID; credentials fetched internally from `EndpointProfileRepository`. See §9.1. |
+| EncryptedSharedPreferences restore failure | On a new device after backup restore, Keystore key is absent; app throws `SecurityException` and all credentials are silently lost | Declare `android:allowBackup="false"` or configure `BackupAgent` exclusion rules; prompt user to re-enter credentials. See §9.1. |
 
 ---
 
@@ -733,3 +781,10 @@ The following criteria are testable conditions that must pass before the corresp
 | AC-10 | Local recording on API 29+ uses MediaStore or SAF. If the user has not granted storage access, recording fails fast with a user prompt; streaming is not blocked. |
 | AC-11 | On incoming phone call, the app mutes the microphone and displays a muted indicator. Audio resumes only on explicit user unmute. |
 | AC-12 | Camera revocation in background switches to audio-only. Returning to foreground re-acquires camera and resumes video with an IDR frame. |
+| AC-13 | The FGS start `Intent` contains only a non-sensitive profile ID. No stream key or auth credential appears as an Intent extra at any log level or in `adb shell dumpsys activity service`. |
+| AC-14 | The manifest declares `android:allowBackup="false"` or a `BackupAgent` that excludes EncryptedSharedPreferences. A simulated restore-then-launch scenario displays a credentials re-entry prompt rather than crashing. |
+| AC-15 | ACRA release-build crash report for an active stream contains zero occurrences of a synthetic stream key string across all `ReportField` entries, including `LOGCAT` and `SHARED_PREFERENCES`. |
+| AC-16 | Simultaneous ABR step-down and `THERMAL_STATUS_SEVERE` event do not crash the encoder or FGS. `EncoderController` serializes both requests and stream resumes within 3 seconds. |
+| AC-17 | On API 28, a mocked `ACTION_BATTERY_CHANGED` broadcast with `EXTRA_TEMPERATURE` > 38°C triggers a HUD thermal warning. Temperature ≥ 43°C triggers graceful stream stop with reason displayed. |
+| AC-18 | Enabling local recording for the first time on API 29+ immediately presents the SAF folder picker. Tapping Start without completing the SAF grant leaves recording blocked and streaming unaffected. |
+| AC-19 | In landscape orientation with an active stream, a device rotation gesture does not restart the stream, alter `StreamState`, or cause a visible flash of portrait orientation. |
