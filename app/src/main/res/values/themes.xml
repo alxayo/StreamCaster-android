@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base Material3 theme for StreamCaster -->
+    <style name="Theme.StreamCaster" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

@@ -1,0 +1,44 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Android Studio
+*.iml
+.idea/
+.DS_Store
+
+# NDK
+obj/
+
+# IntelliJ
+*.hprof
+
+# Keystore files (keep them out of version control)
+*.jks
+*.keystore
+
+# Google Services (GMS flavor only, not committed)
+app/src/gms/google-services.json
+
+# Log files
+*.log
