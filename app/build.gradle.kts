@@ -60,6 +60,10 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     // Resolve duplicate files from dependencies
     packaging {
         resources {
