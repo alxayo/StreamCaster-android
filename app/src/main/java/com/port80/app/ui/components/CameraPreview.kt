@@ -1,7 +1,7 @@
 package com.port80.app.ui.components
 
 import android.view.SurfaceHolder
-import android.view.SurfaceView
+import com.pedro.library.view.OpenGlView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,33 +29,37 @@ import androidx.compose.ui.viewinterop.AndroidView
 @Composable
 fun CameraPreview(
     modifier: Modifier = Modifier,
-    onSurfaceReady: (SurfaceHolder) -> Unit,
+    onSurfaceReady: (OpenGlView) -> Unit,
     onSurfaceDestroyed: () -> Unit
 ) {
-    // AndroidView bridges traditional Android Views into Compose
-    // We need SurfaceView because RootEncoder draws camera frames directly onto it
+    // AndroidView bridges traditional Android Views into Compose.
+    // OpenGlView (from RootEncoder) extends SurfaceView and is the required
+    // surface type for the RtmpCamera2(OpenGlView, ConnectChecker) constructor,
+    // which renders the live camera preview directly onto the view.
     AndroidView(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black),
         factory = { context ->
-            SurfaceView(context).apply {
-                holder.addCallback(object : SurfaceHolder.Callback {
-                    override fun surfaceCreated(holder: SurfaceHolder) {
-                        onSurfaceReady(holder)
-                    }
+            val openGlView = OpenGlView(context)
+            openGlView.holder.addCallback(object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    // Pass the OpenGlView itself (not just the holder) so RtmpCamera2
+                    // can be constructed with it for on-screen rendering.
+                    onSurfaceReady(openGlView)
+                }
 
-                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                        // Surface size changed — could adjust preview here if needed
-                    }
+                override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                    // Surface resized — RootEncoder handles this internally.
+                }
 
-                    override fun surfaceDestroyed(holder: SurfaceHolder) {
-                        // Surface is being destroyed — detach preview
-                        // The stream continues without preview (e.g., when app is backgrounded)
-                        onSurfaceDestroyed()
-                    }
-                })
-            }
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    // Surface is being destroyed — detach preview.
+                    // The stream continues without preview when app is backgrounded.
+                    onSurfaceDestroyed()
+                }
+            })
+            openGlView
         }
     )
 }

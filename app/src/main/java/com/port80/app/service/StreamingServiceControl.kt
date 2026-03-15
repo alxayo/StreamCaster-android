@@ -1,6 +1,6 @@
 package com.port80.app.service
 
-import android.view.SurfaceHolder
+import com.pedro.library.view.OpenGlView
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
 import kotlinx.coroutines.flow.StateFlow
@@ -39,10 +39,10 @@ interface StreamingServiceControl {
     fun switchCamera()
 
     /**
-     * Attach a preview surface for camera output display.
-     * Call this when SurfaceView is created. Safe to call multiple times.
+     * Attach an OpenGlView surface for camera output display.
+     * Call this when the view's surface is created. Safe to call multiple times.
      */
-    fun attachPreviewSurface(holder: SurfaceHolder)
+    fun attachPreviewSurface(openGlView: OpenGlView)
 
     /**
      * Detach the preview surface. Call this when SurfaceView is destroyed.

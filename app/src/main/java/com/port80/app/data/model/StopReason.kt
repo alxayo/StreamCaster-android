@@ -7,6 +7,8 @@ package com.port80.app.data.model
 enum class StopReason {
     /** User tapped the stop button. */
     USER_REQUEST,
+    /** No valid endpoint profile could be resolved when starting a stream. */
+    ERROR_PROFILE,
     /** The video/audio encoder crashed or could not be restarted. */
     ERROR_ENCODER,
     /** RTMP server rejected our credentials (wrong stream key or password). */

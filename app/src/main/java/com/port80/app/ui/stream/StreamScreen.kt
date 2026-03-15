@@ -40,6 +40,7 @@ import com.port80.app.data.model.StreamState
 import com.port80.app.ui.components.CameraPreview
 import com.port80.app.ui.components.PermissionHandler
 import com.port80.app.ui.components.StreamHud
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * Main streaming screen — the primary UI the user interacts with.
@@ -72,6 +73,7 @@ fun StreamScreen(
         val state = streamState
         if (state is StreamState.Stopped && state.reason != StopReason.USER_REQUEST) {
             val message = when (state.reason) {
+                StopReason.ERROR_PROFILE -> "Stream stopped: endpoint profile not found"
                 StopReason.ERROR_ENCODER -> "Stream stopped: encoder error"
                 StopReason.ERROR_AUTH -> "Stream stopped: authentication failed"
                 StopReason.ERROR_CAMERA -> "Stream stopped: camera error"
@@ -81,6 +83,20 @@ fun StreamScreen(
                 else -> "Stream stopped unexpectedly"
             }
             snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.uiEvents.collectLatest { event ->
+            when (event) {
+                StreamViewModel.UiEvent.ServiceDied -> {
+                    snackbarHostState.showSnackbar("Streaming service stopped unexpectedly")
+                }
+
+                StreamViewModel.UiEvent.NoProfilesConfigured -> {
+                    snackbarHostState.showSnackbar("No streaming endpoint configured")
+                }
+            }
         }
     }
 
@@ -100,7 +116,7 @@ fun StreamScreen(
             // Layer 1: Camera preview (full-screen background)
             CameraPreview(
                 modifier = Modifier.fillMaxSize(),
-                onSurfaceReady = { holder -> viewModel.onSurfaceReady(holder) },
+                onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
                 onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
             )
 
@@ -125,10 +141,6 @@ fun StreamScreen(
                 streamState = streamState,
                 viewModel = viewModel,
                 onSettingsClick = onNavigateToSettings,
-                onStartRequested = { profileId ->
-                    // TODO: Check if profile uses plain RTMP and show warning
-                    viewModel.startStream(profileId)
-                },
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp)
@@ -145,7 +157,6 @@ private fun ControlPanel(
     streamState: StreamState,
     viewModel: StreamViewModel,
     onSettingsClick: () -> Unit,
-    onStartRequested: (profileId: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isStreaming = streamState is StreamState.Live ||
@@ -166,8 +177,7 @@ private fun ControlPanel(
                     if (isStreaming) {
                         viewModel.stopStream()
                     } else {
-                        // Use "default" profile; real profile selection comes from endpoints screen
-                        onStartRequested("default")
+                        viewModel.startStreamWithDefaultProfile()
                     }
                 }
             }
@@ -278,6 +288,7 @@ private fun ConnectionStateLabel(
 
 private fun stoppedLabel(reason: StopReason): Pair<String, Color> = when (reason) {
     StopReason.USER_REQUEST -> "Stopped" to Color.White
+    StopReason.ERROR_PROFILE -> "Profile Missing" to Color.Red
     StopReason.ERROR_AUTH -> "Auth Failed" to Color.Red
     StopReason.ERROR_ENCODER -> "Encoder Error" to Color.Red
     StopReason.ERROR_CAMERA -> "Camera Error" to Color.Red

@@ -1,9 +1,8 @@
 package com.port80.app.service
 
-import android.content.Context
-import android.view.SurfaceHolder
 import com.pedro.common.ConnectChecker
 import com.pedro.library.rtmp.RtmpCamera2
+import com.pedro.library.view.OpenGlView
 import com.port80.app.util.RedactingLogger
 
 /**
@@ -25,12 +24,10 @@ import com.port80.app.util.RedactingLogger
  * 4. [stopPreview]  — stops camera capture
  * 5. [release]      — frees all resources
  *
- * @param context Application or service context (never an Activity — avoids leaks).
  * @param connectChecker Callback interface for RTMP connection events. StreamingService
  *                       implements this to drive its state machine.
  */
 class RtmpCamera2Bridge(
-    private val context: Context,
     private val connectChecker: ConnectChecker
 ) : EncoderBridge {
 
@@ -39,28 +36,21 @@ class RtmpCamera2Bridge(
     }
 
     /**
-     * The main RootEncoder object. Created lazily on the first [startPreview] call
-     * so we don't hold camera resources before they're needed.
-     *
-     * Using the Context constructor puts RtmpCamera2 in "headless" mode — the camera
-     * captures frames for encoding but doesn't render to a display surface. When the
-     * UI layer migrates to [com.pedro.library.view.OpenGlView] (which extends SurfaceView),
-     * we can switch to the OpenGlView constructor for on-screen preview.
+     * The main RootEncoder object. Created (or recreated) in [startPreview] using
+     * the OpenGlView constructor so the camera renders to the display surface.
      */
     private var rtmpCamera2: RtmpCamera2? = null
 
     // ── Preview ──────────────────────────────────────────────────────────
 
-    override fun startPreview(holder: SurfaceHolder) {
+    override fun startPreview(openGlView: OpenGlView) {
         RedactingLogger.d(TAG, "startPreview()")
-        if (rtmpCamera2 == null) {
-            // First call — create the RtmpCamera2 instance.
-            // The Context constructor means the camera runs without an OpenGlView.
-            rtmpCamera2 = RtmpCamera2(context, connectChecker)
-            RedactingLogger.d(TAG, "RtmpCamera2 instance created")
-        }
-        // Start camera capture. No-arg overload uses the default (back) camera
-        // at the device's preferred resolution and frame rate.
+        // Use the OpenGlView constructor so RtmpCamera2 renders frames to the screen.
+        // A new instance is created each time (surface may have been recreated after
+        // a configuration change or process-death recovery).
+        rtmpCamera2 = RtmpCamera2(openGlView, connectChecker)
+        RedactingLogger.d(TAG, "RtmpCamera2 instance created with OpenGlView")
+        // Start camera capture — frames rendered to the OpenGlView provided above.
         rtmpCamera2?.startPreview()
     }
 

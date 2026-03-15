@@ -30,6 +30,10 @@ class EncryptedEndpointProfileRepository @Inject constructor(
 
     private val prefs: SharedPreferences? = createEncryptedPrefs()
 
+    init {
+        seedDefaultProfileIfNeeded()
+    }
+
     private val profilesFlow = MutableStateFlow(loadAllProfiles())
 
     private fun createEncryptedPrefs(): SharedPreferences? {
@@ -148,11 +152,42 @@ class EncryptedEndpointProfileRepository @Inject constructor(
         profilesFlow.value = loadAllProfiles()
     }
 
+    private fun seedDefaultProfileIfNeeded() {
+        val prefs = prefs ?: return
+        if (prefs.getBoolean(KEY_DEFAULT_PROFILE_SEEDED, false)) return
+
+        val existingProfileIds = loadProfileIds()
+        if (existingProfileIds.isNotEmpty()) {
+            prefs.edit().putBoolean(KEY_DEFAULT_PROFILE_SEEDED, true).apply()
+            return
+        }
+
+        val defaultProfile = EndpointProfile(
+            id = DEFAULT_PROFILE_ID,
+            name = DEFAULT_PROFILE_NAME,
+            rtmpUrl = DEFAULT_RTMP_URL,
+            streamKey = DEFAULT_STREAM_KEY
+        )
+
+        prefs.edit()
+            .putString(KEY_PROFILES_INDEX, JSONArray(listOf(defaultProfile.id)).toString())
+            .putString(profileKey(defaultProfile.id), ProfileSerializer.toJsonString(defaultProfile))
+            .putString(KEY_DEFAULT_PROFILE_ID, defaultProfile.id)
+            .putBoolean(KEY_DEFAULT_PROFILE_SEEDED, true)
+            .apply()
+    }
+
     companion object {
         private const val TAG = "EncryptedProfileRepo"
         private const val PREFS_FILE_NAME = "endpoint_profiles_encrypted"
         private const val KEY_PROFILES_INDEX = "profiles_index"
         private const val KEY_DEFAULT_PROFILE_ID = "default_profile_id"
+        private const val KEY_DEFAULT_PROFILE_SEEDED = "default_profile_seeded"
+
+        private const val DEFAULT_PROFILE_ID = "default"
+        private const val DEFAULT_PROFILE_NAME = "Local RTMP"
+        private const val DEFAULT_RTMP_URL = "rtmp://192.168.0.12:1935/live"
+        private const val DEFAULT_STREAM_KEY = "test"
 
         private fun profileKey(id: String): String = "profile_$id"
     }

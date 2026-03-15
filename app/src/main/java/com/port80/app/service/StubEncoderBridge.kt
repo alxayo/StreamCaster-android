@@ -1,7 +1,7 @@
 package com.port80.app.service
 
 import com.port80.app.util.RedactingLogger
-import android.view.SurfaceHolder
+import com.pedro.library.view.OpenGlView
 
 /**
  * A fake encoder bridge used during development and testing.
@@ -14,7 +14,7 @@ class StubEncoderBridge : EncoderBridge {
     }
     private var streaming = false
 
-    override fun startPreview(holder: SurfaceHolder) {
+    override fun startPreview(openGlView: OpenGlView) {
         RedactingLogger.d(TAG, "startPreview() called")
     }
 

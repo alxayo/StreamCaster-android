@@ -7,8 +7,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.view.SurfaceHolder
+import com.pedro.library.view.OpenGlView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
 import com.port80.app.data.model.StopReason
@@ -23,6 +25,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
 import javax.inject.Inject
@@ -43,7 +46,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class StreamViewModel @Inject constructor(
-    application: Application
+    application: Application,
+    private val profileRepository: EndpointProfileRepository
 ) : AndroidViewModel(application) {
 
     companion object {
@@ -86,8 +90,8 @@ class StreamViewModel @Inject constructor(
     private var surfaceDeferred = CompletableDeferred<SurfaceHolder>()
 
     // WeakReference prevents memory leaks — if the Activity/Fragment is
-    // destroyed, the SurfaceHolder can be garbage-collected.
-    private var surfaceRef: WeakReference<SurfaceHolder>? = null
+    // destroyed, the OpenGlView can be garbage-collected.
+    private var surfaceRef: WeakReference<OpenGlView>? = null
 
     // ── Service connection callback ──────────────
     // Android calls these methods when the service binding succeeds or drops.
@@ -128,8 +132,8 @@ class StreamViewModel @Inject constructor(
                 // 1. Surface was created before the service connected (normal flow)
                 // 2. Process-death recovery: ViewModel + surface are new,
                 //    service is already Live and needs the new surface
-                surfaceRef?.get()?.let { holder ->
-                    service.attachPreviewSurface(holder)
+                surfaceRef?.get()?.let { openGlView ->
+                    service.attachPreviewSurface(openGlView)
                 }
             }
         }
@@ -191,6 +195,24 @@ class StreamViewModel @Inject constructor(
     }
 
     /**
+     * Resolve the current default profile from the repository and start streaming.
+     * Falls back to the first available profile when no explicit default is set.
+     */
+    fun startStreamWithDefaultProfile() {
+        viewModelScope.launch {
+            val resolvedProfileId = profileRepository.getDefault()?.id
+                ?: profileRepository.getAll().first().firstOrNull()?.id
+
+            if (resolvedProfileId == null) {
+                _uiEvents.tryEmit(UiEvent.NoProfilesConfigured)
+                return@launch
+            }
+
+            startStream(resolvedProfileId)
+        }
+    }
+
+    /**
      * Stop the current stream gracefully.
      * Idempotent — safe to call when already stopped or idle.
      */
@@ -229,16 +251,16 @@ class StreamViewModel @Inject constructor(
      * The SurfaceHolder is stored as a [WeakReference] — if the Activity is
      * garbage-collected, we won't hold it in memory.
      */
-    fun onSurfaceReady(holder: SurfaceHolder) {
-        surfaceRef = WeakReference(holder)
+    fun onSurfaceReady(openGlView: OpenGlView) {
+        surfaceRef = WeakReference(openGlView)
 
         // Complete the gate only once; subsequent calls are no-ops.
         if (!surfaceDeferred.isCompleted) {
-            surfaceDeferred.complete(holder)
+            surfaceDeferred.complete(openGlView.holder)
         }
 
         // If already bound to the service, attach immediately.
-        serviceControl?.attachPreviewSurface(holder)
+        serviceControl?.attachPreviewSurface(openGlView)
         RedactingLogger.d(TAG, "Surface ready — preview attached")
     }
 
@@ -309,5 +331,8 @@ class StreamViewModel @Inject constructor(
     sealed class UiEvent {
         /** The streaming service died unexpectedly (OS killed the process). */
         data object ServiceDied : UiEvent()
+
+        /** No endpoint profile is configured, so stream start cannot proceed. */
+        data object NoProfilesConfigured : UiEvent()
     }
 }

@@ -1,6 +1,6 @@
 package com.port80.app.service
 
-import android.view.SurfaceHolder
+import com.pedro.library.view.OpenGlView
 import com.port80.app.data.model.Resolution
 
 /**
@@ -11,8 +11,8 @@ import com.port80.app.data.model.Resolution
  * T-007b provides RtmpCamera2EncoderBridge (the real implementation).
  */
 interface EncoderBridge {
-    /** Start showing camera preview on the given surface. */
-    fun startPreview(holder: SurfaceHolder)
+    /** Start showing camera preview on the given OpenGlView surface. */
+    fun startPreview(openGlView: OpenGlView)
 
     /** Stop the camera preview (streaming continues without display). */
     fun stopPreview()

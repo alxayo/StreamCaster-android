@@ -7,8 +7,9 @@ import android.content.Intent
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
-import android.view.SurfaceHolder
 import androidx.core.app.NotificationCompat
+import com.pedro.common.ConnectChecker
+import com.pedro.library.view.OpenGlView
 import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
 import com.port80.app.data.model.StreamState
@@ -43,7 +44,7 @@ import javax.inject.Inject
  *                      \-> Reconnecting -/
  */
 @AndroidEntryPoint
-class StreamingService : Service(), StreamingServiceControl {
+class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     companion object {
         private const val TAG = "StreamingService"
@@ -62,14 +63,14 @@ class StreamingService : Service(), StreamingServiceControl {
     private val _streamStats = MutableStateFlow(StreamStats())
     override val streamStats: StateFlow<StreamStats> = _streamStats.asStateFlow()
 
-    // -- Encoder (stub for now, replaced by real impl in T-007b) --
-    private var encoderBridge: EncoderBridge = StubEncoderBridge()
+    // -- Encoder: real RtmpCamera2 bridge, constructed once the service context is ready --
+    private val encoderBridge: EncoderBridge by lazy { RtmpCamera2Bridge(this) }
 
     // -- Coroutine scope tied to service lifecycle --
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // -- Surface management --
-    private var currentSurface: SurfaceHolder? = null
+    private var currentSurface: OpenGlView? = null
 
     // -- Binder for Activity/ViewModel to communicate with this service --
     inner class LocalBinder : Binder() {
@@ -140,17 +141,16 @@ class StreamingService : Service(), StreamingServiceControl {
                 val profile = profileRepository.getById(profileId)
                 if (profile == null) {
                     RedactingLogger.e(TAG, "Profile not found: $profileId")
-                    _streamState.value = StreamState.Stopped(StopReason.ERROR_AUTH)
+                    _streamState.value = StreamState.Stopped(StopReason.ERROR_PROFILE)
                     return@launch
                 }
 
-                // Connect via encoder bridge
-                encoderBridge.connect(profile.rtmpUrl, profile.streamKey)
-                _streamState.value = StreamState.Live()
-                RedactingLogger.i(TAG, "Stream is now live!")
-
-                // Start preview if surface is available
+                // Start preview first — this creates the RtmpCamera2 instance
+                // bound to the screen surface before any encoder operations.
                 currentSurface?.let { encoderBridge.startPreview(it) }
+
+                // Now connect — RtmpCamera2 instance is guaranteed to exist.
+                encoderBridge.connect(profile.rtmpUrl, profile.streamKey)
 
             } catch (e: Exception) {
                 RedactingLogger.e(TAG, "Failed to start stream", e)
@@ -199,12 +199,12 @@ class StreamingService : Service(), StreamingServiceControl {
         }
     }
 
-    override fun attachPreviewSurface(holder: SurfaceHolder) {
-        currentSurface = holder
+    override fun attachPreviewSurface(openGlView: OpenGlView) {
+        currentSurface = openGlView
         // Only start preview if we're in a state that has the camera active
         val state = _streamState.value
         if (state is StreamState.Live || state == StreamState.Connecting) {
-            encoderBridge.startPreview(holder)
+            encoderBridge.startPreview(openGlView)
         }
         RedactingLogger.d(TAG, "Preview surface attached")
     }
@@ -227,6 +227,52 @@ class StreamingService : Service(), StreamingServiceControl {
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Error during cleanup", e)
         }
+    }
+
+    // ==========================================================
+    // ConnectChecker — driven by RtmpCamera2Bridge callbacks
+    // ==========================================================
+
+    override fun onConnectionStarted(url: String) {
+        RedactingLogger.d(TAG, "RTMP connection started")
+    }
+
+    override fun onConnectionSuccess() {
+        RedactingLogger.i(TAG, "RTMP connection succeeded — stream is live")
+        _streamState.value = StreamState.Live()
+    }
+
+    override fun onConnectionFailed(reason: String) {
+        RedactingLogger.e(TAG, "RTMP connection failed")
+        serviceScope.launch {
+            _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
+        }
+    }
+
+    override fun onNewBitrate(bitrate: Long) {
+        // Update stats when RootEncoder reports actual measured bitrate.
+        _streamStats.value = _streamStats.value.copy(videoBitrateKbps = (bitrate / 1000).toInt())
+    }
+
+    override fun onDisconnect() {
+        RedactingLogger.w(TAG, "RTMP disconnected")
+        // ConnectionManager will drive reconnect; for now surface a stopped state.
+        serviceScope.launch {
+            if (_streamState.value is StreamState.Live || _streamState.value is StreamState.Reconnecting) {
+                _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
+            }
+        }
+    }
+
+    override fun onAuthError() {
+        RedactingLogger.e(TAG, "RTMP auth error — wrong stream key or credentials")
+        serviceScope.launch {
+            _streamState.value = StreamState.Stopped(StopReason.ERROR_AUTH)
+        }
+    }
+
+    override fun onAuthSuccess() {
+        RedactingLogger.d(TAG, "RTMP auth succeeded")
     }
 
     /** Create the notification channel (required on Android 8.0+). */
