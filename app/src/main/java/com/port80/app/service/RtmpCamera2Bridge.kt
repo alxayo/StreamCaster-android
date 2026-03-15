@@ -45,13 +45,21 @@ class RtmpCamera2Bridge(
 
     override fun startPreview(openGlView: OpenGlView) {
         RedactingLogger.d(TAG, "startPreview()")
-        // Use the OpenGlView constructor so RtmpCamera2 renders frames to the screen.
-        // A new instance is created each time (surface may have been recreated after
-        // a configuration change or process-death recovery).
-        rtmpCamera2 = RtmpCamera2(openGlView, connectChecker)
-        RedactingLogger.d(TAG, "RtmpCamera2 instance created with OpenGlView")
-        // Start camera capture — frames rendered to the OpenGlView provided above.
-        rtmpCamera2?.startPreview()
+        try {
+            // Use the OpenGlView constructor so RtmpCamera2 renders frames to the screen.
+            // A new instance is created each time (surface may have been recreated after
+            // a configuration change or process-death recovery).
+            rtmpCamera2 = RtmpCamera2(openGlView, connectChecker)
+            RedactingLogger.d(TAG, "RtmpCamera2 instance created with OpenGlView")
+            // Start camera capture — frames rendered to the OpenGlView provided above.
+            rtmpCamera2?.startPreview()
+            RedactingLogger.d(TAG, "startPreview() completed (isOnPreview=${rtmpCamera2?.isOnPreview == true})")
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "startPreview() failed", e)
+            connectChecker.onConnectionFailed(
+                "PREVIEW_START_FAILED: ${e.javaClass.simpleName}: ${e.message}"
+            )
+        }
     }
 
     override fun stopPreview() {
@@ -65,14 +73,30 @@ class RtmpCamera2Bridge(
         val camera = rtmpCamera2
         if (camera == null) {
             RedactingLogger.e(TAG, "connect() called before startPreview() — ignoring")
+            connectChecker.onConnectionFailed("CAMERA_NOT_INITIALIZED: connect called before preview")
             return
         }
+
+        RedactingLogger.d(
+            TAG,
+            "connect() begin (isOnPreview=${camera.isOnPreview}, isStreaming=${camera.isStreaming})"
+        )
 
         // prepareVideo() and prepareAudio() configure the hardware encoders.
         // They must succeed before we can send data to the RTMP server.
         // The no-arg overloads use sensible defaults (640×480 @ 30 fps, 128 kbps AAC).
-        val videoReady = camera.prepareVideo()
-        val audioReady = camera.prepareAudio()
+        val videoReady: Boolean
+        val audioReady: Boolean
+        try {
+            videoReady = camera.prepareVideo()
+            audioReady = camera.prepareAudio()
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "Encoder prepare threw exception", e)
+            connectChecker.onConnectionFailed(
+                "ENCODER_PREP_EXCEPTION: ${e.javaClass.simpleName}: ${e.message}"
+            )
+            return
+        }
 
         if (!videoReady || !audioReady) {
             RedactingLogger.e(
@@ -81,7 +105,7 @@ class RtmpCamera2Bridge(
             )
             // Notify the listener so StreamingService can transition to an error state.
             connectChecker.onConnectionFailed(
-                "Encoder preparation failed (video=$videoReady, audio=$audioReady)"
+                "ENCODER_PREP_FAILED(video=$videoReady,audio=$audioReady)"
             )
             return
         }
@@ -90,12 +114,24 @@ class RtmpCamera2Bridge(
         val fullUrl = if (streamKey.isNotBlank()) "$url/$streamKey" else url
         // RedactingLogger automatically strips the stream key from the URL
         RedactingLogger.i(TAG, "Connecting to $fullUrl")
-        camera.startStream(fullUrl)
+        try {
+            camera.startStream(fullUrl)
+            RedactingLogger.d(TAG, "startStream() invoked on encoder")
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "startStream() failed", e)
+            connectChecker.onConnectionFailed(
+                "STREAM_START_FAILED: ${e.javaClass.simpleName}: ${e.message}"
+            )
+        }
     }
 
     override fun disconnect() {
-        RedactingLogger.d(TAG, "disconnect()")
-        rtmpCamera2?.stopStream()
+        val camera = rtmpCamera2
+        RedactingLogger.d(
+            TAG,
+            "disconnect() (hasCamera=${camera != null}, isOnPreview=${camera?.isOnPreview == true}, isStreaming=${camera?.isStreaming == true})"
+        )
+        camera?.stopStream()
     }
 
     // ── Camera controls ──────────────────────────────────────────────────
@@ -126,6 +162,10 @@ class RtmpCamera2Bridge(
         RedactingLogger.d(TAG, "release()")
         // Tear down in reverse order: stop streaming first, then camera, then null out.
         rtmpCamera2?.let { camera ->
+            RedactingLogger.d(
+                TAG,
+                "release() begin (isStreaming=${camera.isStreaming}, isOnPreview=${camera.isOnPreview})"
+            )
             if (camera.isStreaming) {
                 camera.stopStream()
             }
@@ -134,6 +174,7 @@ class RtmpCamera2Bridge(
             }
         }
         rtmpCamera2 = null
+        RedactingLogger.d(TAG, "release() completed")
     }
 
     override fun isStreaming(): Boolean {

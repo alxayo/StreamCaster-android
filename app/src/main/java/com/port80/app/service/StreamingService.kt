@@ -147,9 +147,15 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
                 // Start preview first — this creates the RtmpCamera2 instance
                 // bound to the screen surface before any encoder operations.
-                currentSurface?.let { encoderBridge.startPreview(it) }
+                if (currentSurface == null) {
+                    RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
+                } else {
+                    RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview")
+                    encoderBridge.startPreview(requireNotNull(currentSurface))
+                }
 
                 // Now connect — RtmpCamera2 instance is guaranteed to exist.
+                RedactingLogger.d(TAG, "startStream(): invoking encoderBridge.connect()")
                 encoderBridge.connect(profile.rtmpUrl, profile.streamKey)
 
             } catch (e: Exception) {
@@ -234,7 +240,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     // ==========================================================
 
     override fun onConnectionStarted(url: String) {
-        RedactingLogger.d(TAG, "RTMP connection started")
+        RedactingLogger.d(TAG, "RTMP connection started: $url")
     }
 
     override fun onConnectionSuccess() {
@@ -243,9 +249,10 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     }
 
     override fun onConnectionFailed(reason: String) {
-        RedactingLogger.e(TAG, "RTMP connection failed")
+        RedactingLogger.e(TAG, "RTMP connection failed: $reason")
+        val stopReason = mapFailureReason(reason)
         serviceScope.launch {
-            _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
+            _streamState.value = StreamState.Stopped(stopReason)
         }
     }
 
@@ -255,7 +262,11 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     }
 
     override fun onDisconnect() {
-        RedactingLogger.w(TAG, "RTMP disconnected")
+        val previousState = _streamState.value
+        RedactingLogger.w(
+            TAG,
+            "RTMP disconnected (previousState=$previousState, encoderStreaming=${encoderBridge.isStreaming()})"
+        )
         // ConnectionManager will drive reconnect; for now surface a stopped state.
         serviceScope.launch {
             if (_streamState.value is StreamState.Live || _streamState.value is StreamState.Reconnecting) {
@@ -302,4 +313,17 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             .setOngoing(true)
             .setContentIntent(NotificationController.openActivityIntent(this))
             .build()
+
+    /**
+     * Convert low-level encoder/connect failure details into user-facing stop reasons.
+     */
+    private fun mapFailureReason(reason: String): StopReason {
+        val normalized = reason.uppercase()
+        return when {
+            "AUTH" in normalized -> StopReason.ERROR_AUTH
+            "AUDIO" in normalized -> StopReason.ERROR_AUDIO
+            "CAMERA" in normalized || "PREVIEW" in normalized -> StopReason.ERROR_CAMERA
+            else -> StopReason.ERROR_ENCODER
+        }
+    }
 }
