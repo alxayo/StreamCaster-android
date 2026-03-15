@@ -11,13 +11,17 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
+import com.port80.app.data.model.StopReason
 import com.port80.app.service.StreamingService
 import com.port80.app.service.StreamingServiceControl
 import com.port80.app.util.RedactingLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
@@ -68,6 +72,13 @@ class StreamViewModel @Inject constructor(
     /** Live streaming statistics (bitrate, FPS, dropped frames, etc.). */
     val streamStats: StateFlow<StreamStats> = _streamStats.asStateFlow()
 
+    // One-shot UI events (e.g. "service died") — SharedFlow so they're
+    // not replayed on recomposition / re-collection.
+    private val _uiEvents = MutableSharedFlow<UiEvent>(extraBufferCapacity = 1)
+
+    /** One-shot events the UI should show (snackbar, toast, etc.). */
+    val uiEvents: SharedFlow<UiEvent> = _uiEvents.asSharedFlow()
+
     // ── Surface management ───────────────────────
 
     // CompletableDeferred acts as a one-shot gate:
@@ -88,12 +99,20 @@ class StreamViewModel @Inject constructor(
             val localBinder = binder as? StreamingService.LocalBinder
             serviceControl = localBinder?.getService()
             isBound = true
-            RedactingLogger.d(TAG, "Bound to StreamingService")
 
-            // Start collecting the service's state flows into our local
-            // MutableStateFlows. Each runs in its own coroutine so they
-            // don't block each other.
             serviceControl?.let { service ->
+                // Detect process-death recovery: the ViewModel was recreated
+                // but the FGS was still alive and streaming.
+                val serviceState = service.streamState.value
+                if (serviceState is StreamState.Live || serviceState is StreamState.Reconnecting) {
+                    RedactingLogger.i(TAG, "Recovering — service already in $serviceState")
+                } else {
+                    RedactingLogger.d(TAG, "Bound to StreamingService (state: $serviceState)")
+                }
+
+                // Start collecting the service's state flows into our local
+                // MutableStateFlows. Each runs in its own coroutine so they
+                // don't block each other.
                 viewModelScope.launch {
                     service.streamState.collect { state ->
                         _streamState.value = state
@@ -104,26 +123,39 @@ class StreamViewModel @Inject constructor(
                         _streamStats.value = stats
                     }
                 }
-            }
 
-            // If the surface was created before the service connected,
-            // attach it now so the preview starts immediately.
-            surfaceRef?.get()?.let { holder ->
-                serviceControl?.attachPreviewSurface(holder)
+                // Re-attach preview surface. This covers two cases:
+                // 1. Surface was created before the service connected (normal flow)
+                // 2. Process-death recovery: ViewModel + surface are new,
+                //    service is already Live and needs the new surface
+                surfaceRef?.get()?.let { holder ->
+                    service.attachPreviewSurface(holder)
+                }
             }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             // Called when the service process crashes or is killed by the OS.
             // This does NOT fire on a normal unbind — only on unexpected death.
+            val wasPreviouslyActive = serviceControl != null && (
+                _streamState.value is StreamState.Live ||
+                _streamState.value is StreamState.Connecting ||
+                _streamState.value is StreamState.Reconnecting)
             serviceControl = null
             isBound = false
-            _streamState.value = StreamState.Idle
+            _streamState.value = StreamState.Stopped(StopReason.USER_REQUEST)
             RedactingLogger.w(TAG, "Service disconnected unexpectedly")
+
+            if (wasPreviouslyActive) {
+                _uiEvents.tryEmit(UiEvent.ServiceDied)
+            }
         }
     }
 
     // Bind to the service as soon as this ViewModel is created.
+    // On first launch this creates the service (BIND_AUTO_CREATE).
+    // After process-death recreation the FGS may still be running —
+    // binding succeeds and onServiceConnected picks up the live state.
     init {
         bindToService()
     }
@@ -267,5 +299,15 @@ class StreamViewModel @Inject constructor(
             }
             isBound = false
         }
+    }
+
+    // ══════════════════════════════════════════════
+    //  UI Events
+    // ══════════════════════════════════════════════
+
+    /** One-shot events that the UI layer should display once. */
+    sealed class UiEvent {
+        /** The streaming service died unexpectedly (OS killed the process). */
+        data object ServiceDied : UiEvent()
     }
 }
