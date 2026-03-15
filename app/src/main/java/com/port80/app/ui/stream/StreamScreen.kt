@@ -67,6 +67,7 @@ fun StreamScreen(
 ) {
     val streamState by viewModel.streamState.collectAsState()
     val streamStats by viewModel.streamStats.collectAsState()
+    val lastFailureDetail by viewModel.lastFailureDetail.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -74,16 +75,7 @@ fun StreamScreen(
     LaunchedEffect(streamState) {
         val state = streamState
         if (state is StreamState.Stopped && state.reason != StopReason.USER_REQUEST) {
-            val message = when (state.reason) {
-                StopReason.ERROR_PROFILE -> "Stream stopped: endpoint profile not found"
-                StopReason.ERROR_ENCODER -> "Stream stopped: encoder error"
-                StopReason.ERROR_AUTH -> "Stream stopped: authentication failed"
-                StopReason.ERROR_CAMERA -> "Stream stopped: camera error"
-                StopReason.ERROR_AUDIO -> "Stream stopped: audio error"
-                StopReason.THERMAL_CRITICAL -> "Stream stopped: device overheating"
-                StopReason.BATTERY_CRITICAL -> "Stream stopped: battery critically low"
-                else -> "Stream stopped unexpectedly"
-            }
+            val message = stoppedMessage(state.reason, lastFailureDetail)
             snackbarHostState.showSnackbar(message)
         }
     }
@@ -297,5 +289,34 @@ private fun stoppedLabel(reason: StopReason): Pair<String, Color> = when (reason
     StopReason.ERROR_AUDIO -> "Audio Error" to Color.Red
     StopReason.THERMAL_CRITICAL -> "Overheated" to Color.Red
     StopReason.BATTERY_CRITICAL -> "Low Battery" to Color.Red
+}
+
+private fun stoppedMessage(reason: StopReason, detail: String?): String {
+    val base = when (reason) {
+        StopReason.ERROR_PROFILE ->
+            "No endpoint profile found. Configure an endpoint in Settings > Endpoints."
+
+        StopReason.ERROR_AUTH ->
+            "Server rejected authentication. Verify stream key/username/password."
+
+        StopReason.ERROR_CAMERA ->
+            "Camera error while preparing stream. Check camera permission and close other camera apps."
+
+        StopReason.ERROR_AUDIO ->
+            "Microphone/audio error while preparing stream. Check mic permission and close apps using audio input."
+
+        StopReason.ERROR_ENCODER ->
+            "Could not connect to the streaming endpoint. Verify URL, network, and ingest server status."
+
+        StopReason.THERMAL_CRITICAL ->
+            "Streaming stopped: device overheated. Let the device cool down before retrying."
+
+        StopReason.BATTERY_CRITICAL ->
+            "Streaming stopped: battery critically low. Charge device and try again."
+
+        StopReason.USER_REQUEST -> "Stream stopped"
+    }
+
+    return if (detail.isNullOrBlank()) base else "$base\n$detail"
 }
 

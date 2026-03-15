@@ -20,6 +20,12 @@ interface StreamingServiceControl {
     val streamStats: StateFlow<StreamStats>
 
     /**
+     * Last sanitized connection/start failure detail intended for user-facing diagnostics.
+     * Null when no active failure detail is available.
+     */
+    val lastFailureDetail: StateFlow<String?>
+
+    /**
      * Start streaming using the given endpoint profile.
      * The service reads credentials and config internally — no secrets in this call.
      * No-op if already streaming or connecting.

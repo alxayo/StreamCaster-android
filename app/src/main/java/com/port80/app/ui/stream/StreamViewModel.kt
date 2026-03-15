@@ -76,6 +76,11 @@ class StreamViewModel @Inject constructor(
     /** Live streaming statistics (bitrate, FPS, dropped frames, etc.). */
     val streamStats: StateFlow<StreamStats> = _streamStats.asStateFlow()
 
+    private val _lastFailureDetail = MutableStateFlow<String?>(null)
+
+    /** Last user-facing diagnostic detail for stream startup/connection failures. */
+    val lastFailureDetail: StateFlow<String?> = _lastFailureDetail.asStateFlow()
+
     // One-shot UI events (e.g. "service died") — SharedFlow so they're
     // not replayed on recomposition / re-collection.
     private val _uiEvents = MutableSharedFlow<UiEvent>(extraBufferCapacity = 1)
@@ -125,6 +130,11 @@ class StreamViewModel @Inject constructor(
                 viewModelScope.launch {
                     service.streamStats.collect { stats ->
                         _streamStats.value = stats
+                    }
+                }
+                viewModelScope.launch {
+                    service.lastFailureDetail.collect { detail ->
+                        _lastFailureDetail.value = detail
                     }
                 }
 

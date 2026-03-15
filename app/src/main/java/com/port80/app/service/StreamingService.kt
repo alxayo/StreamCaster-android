@@ -10,6 +10,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.pedro.common.ConnectChecker
 import com.pedro.library.view.OpenGlView
+import com.port80.app.crash.CredentialSanitizer
 import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
 import com.port80.app.data.model.StreamState
@@ -62,6 +63,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     private val _streamStats = MutableStateFlow(StreamStats())
     override val streamStats: StateFlow<StreamStats> = _streamStats.asStateFlow()
+
+    private val _lastFailureDetail = MutableStateFlow<String?>(null)
+    override val lastFailureDetail: StateFlow<String?> = _lastFailureDetail.asStateFlow()
 
     // -- Encoder: real RtmpCamera2 bridge, constructed once the service context is ready --
     private val encoderBridge: EncoderBridge by lazy { RtmpCamera2Bridge(this) }
@@ -133,6 +137,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         }
 
         _streamState.value = StreamState.Connecting
+        _lastFailureDetail.value = null
         RedactingLogger.i(TAG, "Starting stream with profile: $profileId")
 
         serviceScope.launch {
@@ -160,6 +165,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
             } catch (e: Exception) {
                 RedactingLogger.e(TAG, "Failed to start stream", e)
+                _lastFailureDetail.value = "Could not start streaming: ${e.javaClass.simpleName}. Check camera/audio permissions and try again."
                 _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
             }
         }
@@ -245,11 +251,13 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun onConnectionSuccess() {
         RedactingLogger.i(TAG, "RTMP connection succeeded — stream is live")
+        _lastFailureDetail.value = null
         _streamState.value = StreamState.Live()
     }
 
     override fun onConnectionFailed(reason: String) {
         RedactingLogger.e(TAG, "RTMP connection failed: $reason")
+        _lastFailureDetail.value = buildFailureDetail(reason)
         val stopReason = mapFailureReason(reason)
         serviceScope.launch {
             _streamState.value = StreamState.Stopped(stopReason)
@@ -267,6 +275,10 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             TAG,
             "RTMP disconnected (previousState=$previousState, encoderStreaming=${encoderBridge.isStreaming()})"
         )
+        if (previousState is StreamState.Live || previousState is StreamState.Reconnecting) {
+            _lastFailureDetail.value =
+                "Connection to server was lost. Check network stability and server availability, then retry."
+        }
         // ConnectionManager will drive reconnect; for now surface a stopped state.
         serviceScope.launch {
             if (_streamState.value is StreamState.Live || _streamState.value is StreamState.Reconnecting) {
@@ -277,6 +289,8 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun onAuthError() {
         RedactingLogger.e(TAG, "RTMP auth error — wrong stream key or credentials")
+        _lastFailureDetail.value =
+            "Authentication rejected by the server. Verify stream key/username/password in endpoint settings."
         serviceScope.launch {
             _streamState.value = StreamState.Stopped(StopReason.ERROR_AUTH)
         }
@@ -324,6 +338,34 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             "AUDIO" in normalized -> StopReason.ERROR_AUDIO
             "CAMERA" in normalized || "PREVIEW" in normalized -> StopReason.ERROR_CAMERA
             else -> StopReason.ERROR_ENCODER
+        }
+    }
+
+    private fun buildFailureDetail(reason: String): String {
+        val sanitizedReason = CredentialSanitizer.sanitize(reason)
+        val normalized = sanitizedReason.uppercase()
+
+        return when {
+            "AUTH" in normalized ->
+                "Authentication failed. Double-check stream key and account credentials."
+
+            "TIMED OUT" in normalized || "TIMEOUT" in normalized ->
+                "Connection timed out. Verify endpoint URL, internet access, and firewall/network restrictions."
+
+            "REFUSED" in normalized || "UNREACHABLE" in normalized || "NO ROUTE" in normalized ->
+                "Server is unreachable. Confirm the RTMP/RTMPS host, port, and that the ingest server is online."
+
+            "AUDIO" in normalized ->
+                "Audio initialization failed. Check microphone permission and whether another app is using the mic."
+
+            "CAMERA" in normalized || "PREVIEW" in normalized ->
+                "Camera initialization failed. Check camera permission and close other apps using the camera."
+
+            "ENCODER_PREP_FAILED" in normalized ->
+                "Device encoder setup failed. Try lowering resolution/FPS/bitrate in Video Settings."
+
+            else ->
+                "Could not connect to streaming endpoint. Verify endpoint URL and network, then retry. Detail: $sanitizedReason"
         }
     }
 }
