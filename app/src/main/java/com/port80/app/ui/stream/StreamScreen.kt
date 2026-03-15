@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -199,7 +201,7 @@ private fun ControlPanel(
                 shape = CircleShape
             ) {
                 Icon(
-                    imageVector = if (isStreaming) Icons.Filled.Close else Icons.Filled.Call,
+                    imageVector = if (isStreaming) Icons.Filled.Stop else Icons.Filled.PlayArrow,
                     contentDescription = if (isStreaming) "Stop stream" else "Start stream",
                     modifier = Modifier.size(28.dp)
                 )
@@ -209,7 +211,7 @@ private fun ControlPanel(
         // Mute/Unmute button (only shown when streaming)
         if (isStreaming) {
             ControlButton(
-                icon = if (isMuted) MuteIcon else UnmuteIcon,
+                icon = if (isMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
                 contentDescription = if (isMuted) "Unmute" else "Mute",
                 onClick = { viewModel.toggleMute() }
             )
@@ -218,7 +220,7 @@ private fun ControlPanel(
         // Switch camera button (only shown when streaming)
         if (isStreaming) {
             ControlButton(
-                icon = Icons.Filled.Refresh,
+                icon = Icons.Filled.Cameraswitch,
                 contentDescription = "Switch camera",
                 onClick = { viewModel.switchCamera() }
             )
@@ -297,8 +299,3 @@ private fun stoppedLabel(reason: StopReason): Pair<String, Color> = when (reason
     StopReason.BATTERY_CRITICAL -> "Low Battery" to Color.Red
 }
 
-// Icons.Filled doesn't include MicOff/Mic, so we reuse existing icons.
-// Call = mic-like for unmuted, Close overlay signals muted state.
-// If material-icons-extended is added later, swap to Icons.Filled.Mic / MicOff.
-private val UnmuteIcon = Icons.Filled.Call
-private val MuteIcon = Icons.Filled.Close
