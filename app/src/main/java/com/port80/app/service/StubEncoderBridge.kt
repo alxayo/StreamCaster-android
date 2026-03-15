@@ -1,6 +1,6 @@
 package com.port80.app.service
 
-import android.util.Log
+import com.port80.app.util.RedactingLogger
 import android.view.SurfaceHolder
 
 /**
@@ -9,37 +9,39 @@ import android.view.SurfaceHolder
  * This will be replaced by RtmpCamera2EncoderBridge in T-007b.
  */
 class StubEncoderBridge : EncoderBridge {
-    private val tag = "StubEncoderBridge"
+    private companion object {
+        private const val TAG = "StubEncoderBridge"
+    }
     private var streaming = false
 
     override fun startPreview(holder: SurfaceHolder) {
-        Log.d(tag, "startPreview() called")
+        RedactingLogger.d(TAG, "startPreview() called")
     }
 
     override fun stopPreview() {
-        Log.d(tag, "stopPreview() called")
+        RedactingLogger.d(TAG, "stopPreview() called")
     }
 
     override fun connect(url: String, streamKey: String) {
-        Log.d(tag, "connect() called (URL redacted)")
+        RedactingLogger.d(TAG, "connect() called (URL redacted)")
         streaming = true
     }
 
     override fun disconnect() {
-        Log.d(tag, "disconnect() called")
+        RedactingLogger.d(TAG, "disconnect() called")
         streaming = false
     }
 
     override fun switchCamera() {
-        Log.d(tag, "switchCamera() called")
+        RedactingLogger.d(TAG, "switchCamera() called")
     }
 
     override fun setVideoBitrateOnFly(bitrateKbps: Int) {
-        Log.d(tag, "setVideoBitrateOnFly($bitrateKbps kbps)")
+        RedactingLogger.d(TAG, "setVideoBitrateOnFly($bitrateKbps kbps)")
     }
 
     override fun release() {
-        Log.d(tag, "release() called")
+        RedactingLogger.d(TAG, "release() called")
         streaming = false
     }
 

@@ -2,7 +2,7 @@ package com.port80.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
+import com.port80.app.util.RedactingLogger
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.port80.app.data.model.EndpointProfile
@@ -43,10 +43,10 @@ class EncryptedEndpointProfileRepository @Inject constructor(
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: GeneralSecurityException) {
-            Log.e(TAG, "Keystore unavailable — credentials cannot be accessed", e)
+            RedactingLogger.e(TAG, "Keystore unavailable — credentials cannot be accessed")
             null
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create encrypted preferences", e)
+            RedactingLogger.e(TAG, "Failed to create encrypted preferences")
             null
         }
     }
@@ -138,7 +138,7 @@ class EncryptedEndpointProfileRepository @Inject constructor(
                     profile.copy(isDefault = profile.id == defaultId)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Skipping corrupt profile entry", e)
+                RedactingLogger.w(TAG, "Skipping corrupt profile entry")
                 null
             }
         }
