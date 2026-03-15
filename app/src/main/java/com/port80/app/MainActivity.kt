@@ -4,8 +4,9 @@ import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import com.port80.app.data.SettingsRepository
+import com.port80.app.navigation.AppNavGraph
 import com.port80.app.util.OrientationHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -32,7 +33,9 @@ class MainActivity : ComponentActivity() {
         applyOrientationLock()
 
         setContent {
-            Text("StreamCaster") // Placeholder — will be replaced with real UI
+            MaterialTheme {
+                AppNavGraph()
+            }
         }
     }
 
