@@ -5,9 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -67,12 +64,6 @@ fun PermissionHandler(
 ) {
     val context = LocalContext.current
 
-    // Track whether we should show a rationale dialog
-    var showRationale by remember { mutableStateOf(false) }
-    var rationaleMessage by remember { mutableStateOf("") }
-    // Store the callback to invoke after the rationale dialog is dismissed
-    var pendingPermissionRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
-
     // Build the list of permissions we need to request
     val permissionsToRequest = remember {
         buildList {
@@ -131,28 +122,6 @@ fun PermissionHandler(
             // Need to request missing permissions
             permissionLauncher.launch(permissionsToRequest)
         }
-    }
-
-    // Show rationale dialog if needed
-    if (showRationale) {
-        AlertDialog(
-            onDismissRequest = { showRationale = false },
-            title = { Text("Permissions Required") },
-            text = { Text(rationaleMessage) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showRationale = false
-                    pendingPermissionRequest?.invoke()
-                }) {
-                    Text("Grant Permissions")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRationale = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 
     // Render the caller's content with the permission request function
