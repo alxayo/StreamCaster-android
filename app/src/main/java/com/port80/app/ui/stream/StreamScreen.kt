@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PlayArrow
@@ -42,6 +43,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.port80.app.data.model.StopReason
 import com.port80.app.data.model.StreamState
 import com.port80.app.ui.components.CameraPreview
+import com.port80.app.ui.components.MinimalStreamingOverlay
 import com.port80.app.ui.components.PermissionHandler
 import com.port80.app.ui.components.StreamHud
 import kotlinx.coroutines.flow.collectLatest
@@ -78,6 +80,8 @@ fun StreamScreen(
     val isActiveStream = streamState is StreamState.Connecting ||
         streamState is StreamState.Live ||
         streamState is StreamState.Reconnecting
+
+    val isMinimalMode by viewModel.isMinimalMode.collectAsState()
 
     DisposableEffect(isActiveStream, keepScreenOn) {
         view.keepScreenOn = isActiveStream && keepScreenOn
@@ -122,38 +126,51 @@ fun StreamScreen(
                 .fillMaxSize()
                 .padding(contentPadding)
         ) {
-            // Layer 1: Camera preview (full-screen background)
-            CameraPreview(
-                modifier = Modifier.fillMaxSize(),
-                onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
-                onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
-            )
-
-            // Layer 2: HUD overlay at the top (only visible when live or reconnecting)
-            if (streamState is StreamState.Live || streamState is StreamState.Reconnecting) {
-                StreamHud(
+            if (isMinimalMode && isActiveStream) {
+                // Minimal power-saving overlay — preview is removed from
+                // composition, triggering surfaceDestroyed() automatically.
+                MinimalStreamingOverlay(
                     stats = streamStats,
-                    modifier = Modifier.align(Alignment.TopCenter)
+                    isMuted = (streamState as? StreamState.Live)?.isMuted == true,
+                    onStopStream = { viewModel.stopStream() },
+                    onToggleMute = { viewModel.toggleMute() },
+                    onExitMinimalMode = { viewModel.exitMinimalMode() }
+                )
+            } else {
+                // Layer 1: Camera preview (full-screen background)
+                CameraPreview(
+                    modifier = Modifier.fillMaxSize(),
+                    onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
+                    onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
+                )
+
+                // Layer 2: HUD overlay at the top (only visible when live or reconnecting)
+                if (streamState is StreamState.Live || streamState is StreamState.Reconnecting) {
+                    StreamHud(
+                        stats = streamStats,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
+                }
+
+                // Layer 3: Connection state indicator at bottom-start
+                ConnectionStateLabel(
+                    state = streamState,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                )
+
+                // Layer 4: Control buttons on the right edge
+                ControlPanel(
+                    streamState = streamState,
+                    viewModel = viewModel,
+                    onSettingsClick = onNavigateToSettings,
+                    onMinimalModeClick = { viewModel.toggleMinimalMode() },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 16.dp)
                 )
             }
-
-            // Layer 3: Connection state indicator at bottom-start
-            ConnectionStateLabel(
-                state = streamState,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
-            )
-
-            // Layer 4: Control buttons on the right edge
-            ControlPanel(
-                streamState = streamState,
-                viewModel = viewModel,
-                onSettingsClick = onNavigateToSettings,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp)
-            )
         }
     }
 }
@@ -166,6 +183,7 @@ private fun ControlPanel(
     streamState: StreamState,
     viewModel: StreamViewModel,
     onSettingsClick: () -> Unit,
+    onMinimalModeClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isStreaming = streamState is StreamState.Live ||
@@ -230,6 +248,15 @@ private fun ControlPanel(
                 icon = Icons.Filled.Cameraswitch,
                 contentDescription = "Switch camera",
                 onClick = { viewModel.switchCamera() }
+            )
+        }
+
+        // Minimal mode button (only shown when streaming)
+        if (isStreaming) {
+            ControlButton(
+                icon = Icons.Filled.DarkMode,
+                contentDescription = "Minimal mode",
+                onClick = onMinimalModeClick
             )
         }
 
