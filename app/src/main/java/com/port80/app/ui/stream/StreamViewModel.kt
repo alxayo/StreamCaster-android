@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Build
 import android.os.IBinder
 import android.view.SurfaceHolder
 import com.pedro.library.view.OpenGlView
@@ -19,6 +20,7 @@ import com.port80.app.service.StreamingServiceControl
 import com.port80.app.util.RedactingLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -61,6 +63,9 @@ class StreamViewModel @Inject constructor(
 
     // Tracks whether we currently hold a binding to the service.
     private var isBound = false
+
+    // Replaced on each bind so repeated service connections do not duplicate collectors.
+    private var serviceCollectorsJob: Job? = null
 
     // ── State exposed to the UI ──────────────────
 
@@ -122,21 +127,7 @@ class StreamViewModel @Inject constructor(
                 // Start collecting the service's state flows into our local
                 // MutableStateFlows. Each runs in its own coroutine so they
                 // don't block each other.
-                viewModelScope.launch {
-                    service.streamState.collect { state ->
-                        _streamState.value = state
-                    }
-                }
-                viewModelScope.launch {
-                    service.streamStats.collect { stats ->
-                        _streamStats.value = stats
-                    }
-                }
-                viewModelScope.launch {
-                    service.lastFailureDetail.collect { detail ->
-                        _lastFailureDetail.value = detail
-                    }
-                }
+                startServiceCollectors(service)
 
                 // Re-attach preview surface. This covers two cases:
                 // 1. Surface was created before the service connected (normal flow)
@@ -157,6 +148,7 @@ class StreamViewModel @Inject constructor(
                 _streamState.value is StreamState.Reconnecting)
             serviceControl = null
             isBound = false
+            stopServiceCollectors()
             _streamState.value = StreamState.Stopped(StopReason.USER_REQUEST)
             RedactingLogger.w(TAG, "Service disconnected unexpectedly")
 
@@ -196,7 +188,11 @@ class StreamViewModel @Inject constructor(
         val intent = Intent(context, StreamingService::class.java).apply {
             putExtra(StreamingService.EXTRA_PROFILE_ID, profileId)
         }
-        context.startForegroundService(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
 
         // Bind so we can observe state and forward commands.
         if (!isBound) {
@@ -313,6 +309,32 @@ class StreamViewModel @Inject constructor(
         }
     }
 
+    private fun startServiceCollectors(service: StreamingServiceControl) {
+        stopServiceCollectors()
+        serviceCollectorsJob = viewModelScope.launch {
+            launch {
+                service.streamState.collect { state ->
+                    _streamState.value = state
+                }
+            }
+            launch {
+                service.streamStats.collect { stats ->
+                    _streamStats.value = stats
+                }
+            }
+            launch {
+                service.lastFailureDetail.collect { detail ->
+                    _lastFailureDetail.value = detail
+                }
+            }
+        }
+    }
+
+    private fun stopServiceCollectors() {
+        serviceCollectorsJob?.cancel()
+        serviceCollectorsJob = null
+    }
+
     /**
      * Clean up when the ViewModel is being destroyed (e.g., the user
      * leaves the streaming screen for good).
@@ -323,6 +345,7 @@ class StreamViewModel @Inject constructor(
      */
     override fun onCleared() {
         super.onCleared()
+        stopServiceCollectors()
         if (isBound) {
             try {
                 getApplication<Application>().unbindService(serviceConnection)
