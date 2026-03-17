@@ -55,4 +55,8 @@ interface SettingsRepository {
     // ── Recording settings ──
     fun getLocalRecordingEnabled(): Flow<Boolean>
     suspend fun setLocalRecordingEnabled(enabled: Boolean)
+
+    // ── Screen settings ──
+    fun getKeepScreenOn(): Flow<Boolean>
+    suspend fun setKeepScreenOn(enabled: Boolean)
 }

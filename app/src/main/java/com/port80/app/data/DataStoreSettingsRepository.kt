@@ -44,6 +44,9 @@ class DataStoreSettingsRepository @Inject constructor(
         // Recording
         val KEY_LOCAL_RECORDING_ENABLED = booleanPreferencesKey("local_recording_enabled")
 
+        // Screen
+        val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+
         // Defaults
         const val DEFAULT_RESOLUTION_WIDTH = 1280
         const val DEFAULT_RESOLUTION_HEIGHT = 720
@@ -60,6 +63,7 @@ class DataStoreSettingsRepository @Inject constructor(
         const val DEFAULT_LOW_BATTERY_THRESHOLD = 5
         const val DEFAULT_CRITICAL_BATTERY_THRESHOLD = 2
         const val DEFAULT_LOCAL_RECORDING_ENABLED = false
+        const val DEFAULT_KEEP_SCREEN_ON = true
     }
 
     // ── Video settings ──
@@ -188,5 +192,15 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setLocalRecordingEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_LOCAL_RECORDING_ENABLED] = enabled }
+    }
+
+    // ── Screen settings ──
+
+    override fun getKeepScreenOn(): Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_KEEP_SCREEN_ON] ?: DEFAULT_KEEP_SCREEN_ON
+    }
+
+    override suspend fun setKeepScreenOn(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_KEEP_SCREEN_ON] = enabled }
     }
 }
