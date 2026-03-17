@@ -55,6 +55,7 @@ fun GeneralSettingsScreen(
     val lowBattery by viewModel.lowBatteryThreshold.collectAsState()
     val criticalBattery by viewModel.criticalBatteryThreshold.collectAsState()
     val recordingEnabled by viewModel.localRecordingEnabled.collectAsState()
+    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
 
     val hasFront = viewModel.hasFrontCamera
     val hasBack = viewModel.hasBackCamera
@@ -90,6 +91,13 @@ fun GeneralSettingsScreen(
                 description = "Automatically adjust bitrate based on network conditions",
                 checked = abrEnabled,
                 onCheckedChange = { viewModel.setAbrEnabled(it) }
+            )
+
+            ToggleItem(
+                title = "Keep Screen On",
+                description = "Prevent the screen from dimming while streaming",
+                checked = keepScreenOn,
+                onCheckedChange = { viewModel.setKeepScreenOn(it) }
             )
 
             // ── Camera ──────────────────────────────────────────────
