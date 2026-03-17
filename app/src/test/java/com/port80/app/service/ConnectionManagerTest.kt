@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -173,5 +174,30 @@ class ConnectionManagerTest {
         testScope.runCurrent()
 
         assertEquals(StreamState.Reconnecting(0, 3_000L), stateChanges.last())
+    }
+
+    @Test
+    fun `duplicate connection loss does not reset pending retry`() {
+        var connectCalls = 0
+        connectionManager.onConnect = {
+            connectCalls++
+            false
+        }
+        connectionManager.start()
+        connectionManager.onConnectionLost()
+        testScope.runCurrent()
+
+        assertEquals(listOf(StreamState.Reconnecting(0, 3_000L)), stateChanges)
+
+        connectionManager.onConnectionLost()
+        testScope.runCurrent()
+
+        assertEquals("duplicate loss should not reschedule the retry", 1, stateChanges.size)
+
+        testScope.advanceTimeBy(3_000L)
+        testScope.runCurrent()
+
+        assertEquals(StreamState.Reconnecting(1, 6_000L), stateChanges.last())
+        assertTrue("scheduled retry should still execute once", connectCalls >= 1)
     }
 }

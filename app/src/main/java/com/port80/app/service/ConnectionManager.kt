@@ -64,6 +64,10 @@ class ConnectionManager(
 
         scope.launch {
             mutex.withLock {
+                if (retryJob?.isActive == true) {
+                    RedactingLogger.d(TAG, "Reconnect already scheduled; ignoring duplicate loss signal")
+                    return@withLock
+                }
                 RedactingLogger.w(TAG, "Connection lost — starting reconnect")
                 currentAttempt = 0
                 scheduleRetry()
