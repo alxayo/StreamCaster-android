@@ -12,6 +12,7 @@ import com.pedro.library.view.OpenGlView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.port80.app.data.EndpointProfileRepository
+import com.port80.app.data.SettingsRepository
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
 import com.port80.app.data.model.StopReason
@@ -24,10 +25,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
 import javax.inject.Inject
@@ -49,7 +52,8 @@ import javax.inject.Inject
 @HiltViewModel
 class StreamViewModel @Inject constructor(
     application: Application,
-    private val profileRepository: EndpointProfileRepository
+    private val profileRepository: EndpointProfileRepository,
+    private val settingsRepository: SettingsRepository
 ) : AndroidViewModel(application) {
 
     companion object {
@@ -92,6 +96,12 @@ class StreamViewModel @Inject constructor(
 
     /** One-shot events the UI should show (snackbar, toast, etc.). */
     val uiEvents: SharedFlow<UiEvent> = _uiEvents.asSharedFlow()
+
+    // ── Settings ─────────────────────────────────
+
+    /** Whether to keep the screen on during streaming (user preference). */
+    val keepScreenOnSetting: StateFlow<Boolean> = settingsRepository.getKeepScreenOn()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     // ── Surface management ───────────────────────
 

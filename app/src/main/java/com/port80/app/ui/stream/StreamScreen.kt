@@ -24,6 +24,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -68,6 +70,19 @@ fun StreamScreen(
     val streamState by viewModel.streamState.collectAsState()
     val streamStats by viewModel.streamStats.collectAsState()
     val lastFailureDetail by viewModel.lastFailureDetail.collectAsState()
+
+    // Keep screen on while streaming (when enabled in settings)
+    val keepScreenOn by viewModel.keepScreenOnSetting.collectAsState()
+    val view = LocalView.current
+
+    val isActiveStream = streamState is StreamState.Connecting ||
+        streamState is StreamState.Live ||
+        streamState is StreamState.Reconnecting
+
+    DisposableEffect(isActiveStream, keepScreenOn) {
+        view.keepScreenOn = isActiveStream && keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
