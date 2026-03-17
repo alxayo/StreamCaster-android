@@ -222,13 +222,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                 return
             }
 
-            val surface = currentSurface
-            if (surface == null) {
-                RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
-            } else {
-                RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview")
-                encoderBridge.startPreview(surface)
-            }
+            ensurePreview()
 
             RedactingLogger.d(TAG, "startStream(): invoking encoderBridge.connect()")
             encoderBridge.connect(profile.rtmpUrl, profile.streamKey)
@@ -237,6 +231,16 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             _lastFailureDetail.value =
                 "Could not start streaming: ${e.javaClass.simpleName}. Check camera/audio permissions and try again."
             _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
+        }
+    }
+
+    private fun ensurePreview() {
+        val surface = currentSurface
+        if (surface == null) {
+            RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
+        } else {
+            RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview")
+            encoderBridge.startPreview(surface)
         }
     }
 
@@ -256,8 +260,8 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun onConnectionFailed(reason: String) {
         RedactingLogger.e(TAG, "RTMP connection failed: $reason")
-        _lastFailureDetail.value = buildFailureDetail(reason)
-        val stopReason = mapFailureReason(reason)
+        _lastFailureDetail.value = StreamFailureMapper.buildFailureDetail(reason)
+        val stopReason = StreamFailureMapper.mapFailureReason(reason)
         serviceScope.launch {
             _streamState.value = StreamState.Stopped(stopReason)
         }
@@ -326,45 +330,4 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             .setOngoing(true)
             .setContentIntent(NotificationController.openActivityIntent(this))
             .build()
-
-    /**
-     * Convert low-level encoder/connect failure details into user-facing stop reasons.
-     */
-    private fun mapFailureReason(reason: String): StopReason {
-        val normalized = reason.uppercase()
-        return when {
-            "AUTH" in normalized -> StopReason.ERROR_AUTH
-            "AUDIO" in normalized -> StopReason.ERROR_AUDIO
-            "CAMERA" in normalized || "PREVIEW" in normalized -> StopReason.ERROR_CAMERA
-            else -> StopReason.ERROR_ENCODER
-        }
-    }
-
-    private fun buildFailureDetail(reason: String): String {
-        val sanitizedReason = CredentialSanitizer.sanitize(reason)
-        val normalized = sanitizedReason.uppercase()
-
-        return when {
-            "AUTH" in normalized ->
-                "Authentication failed. Double-check stream key and account credentials."
-
-            "TIMED OUT" in normalized || "TIMEOUT" in normalized ->
-                "Connection timed out. Verify endpoint URL, internet access, and firewall/network restrictions."
-
-            "REFUSED" in normalized || "UNREACHABLE" in normalized || "NO ROUTE" in normalized ->
-                "Server is unreachable. Confirm the RTMP/RTMPS host, port, and that the ingest server is online."
-
-            "AUDIO" in normalized ->
-                "Audio initialization failed. Check microphone permission and whether another app is using the mic."
-
-            "CAMERA" in normalized || "PREVIEW" in normalized ->
-                "Camera initialization failed. Check camera permission and close other apps using the camera."
-
-            "ENCODER_PREP_FAILED" in normalized ->
-                "Device encoder setup failed. Try lowering resolution/FPS/bitrate in Video Settings."
-
-            else ->
-                "Could not connect to streaming endpoint. Verify endpoint URL and network, then retry. Detail: $sanitizedReason"
-        }
-    }
 }
