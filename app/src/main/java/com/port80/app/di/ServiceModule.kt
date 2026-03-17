@@ -17,4 +17,10 @@ abstract class ServiceModule {
     abstract fun bindNotificationController(
         impl: StreamNotificationController
     ): NotificationController
+
+    @Binds
+    @Singleton
+    abstract fun bindEncoderBridgeFactory(
+        impl: com.port80.app.service.RtmpCamera2Bridge.Factory
+    ): com.port80.app.service.EncoderBridge.Factory
 }

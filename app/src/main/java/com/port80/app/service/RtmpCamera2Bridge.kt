@@ -35,6 +35,11 @@ class RtmpCamera2Bridge(
         private const val TAG = "RtmpCamera2Bridge"
     }
 
+    class Factory @javax.inject.Inject constructor() : EncoderBridge.Factory {
+        override fun create(connectChecker: ConnectChecker): EncoderBridge =
+            RtmpCamera2Bridge(connectChecker)
+    }
+
     /**
      * The main RootEncoder object. Created (or recreated) in [startPreview] using
      * the OpenGlView constructor so the camera renders to the display surface.

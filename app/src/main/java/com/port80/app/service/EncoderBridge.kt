@@ -34,4 +34,9 @@ interface EncoderBridge {
 
     /** Check if we're currently streaming to the RTMP server. */
     fun isStreaming(): Boolean
+
+    /** Factory for creating EncoderBridge instances. */
+    fun interface Factory {
+        fun create(connectChecker: com.pedro.common.ConnectChecker): EncoderBridge
+    }
 }

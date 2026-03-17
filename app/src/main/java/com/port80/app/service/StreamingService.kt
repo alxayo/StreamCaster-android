@@ -56,6 +56,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     // -- Injected dependencies --
     @Inject lateinit var profileRepository: EndpointProfileRepository
     @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var encoderBridgeFactory: EncoderBridge.Factory
 
     // -- State (owned exclusively by this service) --
     private val _streamState = MutableStateFlow<StreamState>(StreamState.Idle)
@@ -68,7 +69,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     override val lastFailureDetail: StateFlow<String?> = _lastFailureDetail.asStateFlow()
 
     // -- Encoder: real RtmpCamera2 bridge, constructed once the service context is ready --
-    private val encoderBridge: EncoderBridge by lazy { RtmpCamera2Bridge(this) }
+    private val encoderBridge: EncoderBridge by lazy { encoderBridgeFactory.create(this) }
 
     // -- Coroutine scope tied to service lifecycle --
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
