@@ -103,6 +103,23 @@ class StreamViewModel @Inject constructor(
     val keepScreenOnSetting: StateFlow<Boolean> = settingsRepository.getKeepScreenOn()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    // ── Minimal mode ─────────────────────────────
+
+    private val _isMinimalMode = MutableStateFlow(false)
+
+    /** Whether the UI is in minimal (power-saving) mode. */
+    val isMinimalMode: StateFlow<Boolean> = _isMinimalMode.asStateFlow()
+
+    /** Toggle minimal streaming mode on/off. */
+    fun toggleMinimalMode() {
+        _isMinimalMode.value = !_isMinimalMode.value
+    }
+
+    /** Exit minimal mode (e.g., when the user taps "Restore Preview"). */
+    fun exitMinimalMode() {
+        _isMinimalMode.value = false
+    }
+
     // ── Surface management ───────────────────────
 
     // CompletableDeferred acts as a one-shot gate:
@@ -335,6 +352,14 @@ class StreamViewModel @Inject constructor(
             launch {
                 service.lastFailureDetail.collect { detail ->
                     _lastFailureDetail.value = detail
+                }
+            }
+            // Auto-reset minimal mode when stream stops
+            launch {
+                service.streamState.collect { state ->
+                    if (state is StreamState.Idle || state is StreamState.Stopped) {
+                        _isMinimalMode.value = false
+                    }
                 }
             }
         }
