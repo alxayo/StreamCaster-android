@@ -81,6 +81,11 @@ class SettingsViewModel @Inject constructor(
     val localRecordingEnabled: StateFlow<Boolean> = settingsRepository.getLocalRecordingEnabled()
         .stateIn(viewModelScope, subscriptionPolicy, false)
 
+    // ── Screen settings ─────────────────────────────────────────────
+
+    val keepScreenOn: StateFlow<Boolean> = settingsRepository.getKeepScreenOn()
+        .stateIn(viewModelScope, subscriptionPolicy, true)
+
     // ── Device capabilities (read-only, queried once) ───────────────
 
     /** Resolutions the back camera + H.264 encoder both support. */
@@ -168,5 +173,9 @@ class SettingsViewModel @Inject constructor(
 
     fun setLocalRecordingEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setLocalRecordingEnabled(enabled) }
+    }
+
+    fun setKeepScreenOn(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setKeepScreenOn(enabled) }
     }
 }
