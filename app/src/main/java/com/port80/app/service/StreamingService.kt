@@ -140,35 +140,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         _lastFailureDetail.value = null
         RedactingLogger.i(TAG, "Starting stream with profile: $profileId")
 
-        serviceScope.launch {
-            try {
-                // Read the endpoint profile (credentials fetched here, never from Intent)
-                val profile = profileRepository.getById(profileId)
-                if (profile == null) {
-                    RedactingLogger.e(TAG, "Profile not found: $profileId")
-                    _streamState.value = StreamState.Stopped(StopReason.ERROR_PROFILE)
-                    return@launch
-                }
-
-                // Start preview first — this creates the RtmpCamera2 instance
-                // bound to the screen surface before any encoder operations.
-                if (currentSurface == null) {
-                    RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
-                } else {
-                    RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview")
-                    encoderBridge.startPreview(requireNotNull(currentSurface))
-                }
-
-                // Now connect — RtmpCamera2 instance is guaranteed to exist.
-                RedactingLogger.d(TAG, "startStream(): invoking encoderBridge.connect()")
-                encoderBridge.connect(profile.rtmpUrl, profile.streamKey)
-
-            } catch (e: Exception) {
-                RedactingLogger.e(TAG, "Failed to start stream", e)
-                _lastFailureDetail.value = "Could not start streaming: ${e.javaClass.simpleName}. Check camera/audio permissions and try again."
-                _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
-            }
-        }
+        serviceScope.launch { startStreamInternal(profileId) }
     }
 
     override fun stopStream() {
@@ -238,6 +210,33 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             encoderBridge.release()
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Error during cleanup", e)
+        }
+    }
+
+    private suspend fun startStreamInternal(profileId: String) {
+        try {
+            val profile = profileRepository.getById(profileId)
+            if (profile == null) {
+                RedactingLogger.e(TAG, "Profile not found: $profileId")
+                _streamState.value = StreamState.Stopped(StopReason.ERROR_PROFILE)
+                return
+            }
+
+            val surface = currentSurface
+            if (surface == null) {
+                RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
+            } else {
+                RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview")
+                encoderBridge.startPreview(surface)
+            }
+
+            RedactingLogger.d(TAG, "startStream(): invoking encoderBridge.connect()")
+            encoderBridge.connect(profile.rtmpUrl, profile.streamKey)
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "Failed to start stream", e)
+            _lastFailureDetail.value =
+                "Could not start streaming: ${e.javaClass.simpleName}. Check camera/audio permissions and try again."
+            _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
         }
     }
 
