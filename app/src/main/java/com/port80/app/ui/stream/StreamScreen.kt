@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +70,7 @@ fun StreamScreen(
     val streamState by viewModel.streamState.collectAsState()
     val streamStats by viewModel.streamStats.collectAsState()
     val lastFailureDetail by viewModel.lastFailureDetail.collectAsState()
+    val isEnergySavingEnabled by viewModel.isEnergySavingEnabled.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -107,14 +110,37 @@ fun StreamScreen(
                 .fillMaxSize()
                 .padding(contentPadding)
         ) {
-            // Layer 1: Camera preview (full-screen background)
+            // Layer 1: Camera preview (full-screen background).
+            // IMPORTANT: This composable must ALWAYS be present while streaming,
+            // even when energy-saving mode is active. Removing it would destroy
+            // the SurfaceView and trigger stopPreview() on the encoder, which
+            // breaks the live RTMP stream. The energy-saving overlay (Layer 2)
+            // hides the camera feed visually without touching the encoder.
             CameraPreview(
                 modifier = Modifier.fillMaxSize(),
                 onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
                 onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
             )
 
-            // Layer 2: HUD overlay at the top (only visible when live or reconnecting)
+            // Layer 2: Energy-saving overlay — shown instead of the live camera
+            // feed when the user has enabled energy-saving mode. The camera and
+            // encoder continue running underneath; only the display is dimmed.
+            if (isEnergySavingEnabled) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF111111)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "⚡ Energy Saving",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 14.sp
+                    )
+                }
+            }
+
+            // Layer 3: HUD overlay at the top (only visible when live or reconnecting)
             if (streamState is StreamState.Live || streamState is StreamState.Reconnecting) {
                 StreamHud(
                     stats = streamStats,
@@ -122,7 +148,7 @@ fun StreamScreen(
                 )
             }
 
-            // Layer 3: Connection state indicator at bottom-start
+            // Layer 4: Connection state indicator at bottom-start
             ConnectionStateLabel(
                 state = streamState,
                 modifier = Modifier
@@ -130,9 +156,10 @@ fun StreamScreen(
                     .padding(16.dp)
             )
 
-            // Layer 4: Control buttons on the right edge
+            // Layer 5: Control buttons on the right edge
             ControlPanel(
                 streamState = streamState,
+                isEnergySavingEnabled = isEnergySavingEnabled,
                 viewModel = viewModel,
                 onSettingsClick = onNavigateToSettings,
                 modifier = Modifier
@@ -149,6 +176,7 @@ fun StreamScreen(
 @Composable
 private fun ControlPanel(
     streamState: StreamState,
+    isEnergySavingEnabled: Boolean,
     viewModel: StreamViewModel,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -215,6 +243,17 @@ private fun ControlPanel(
                 icon = Icons.Filled.Cameraswitch,
                 contentDescription = "Switch camera",
                 onClick = { viewModel.switchCamera() }
+            )
+        }
+
+        // Energy-saving toggle (only shown when streaming).
+        // Hides the camera preview with a dark overlay without touching the
+        // encoder, so the RTMP stream continues uninterrupted.
+        if (isStreaming) {
+            ControlButton(
+                icon = if (isEnergySavingEnabled) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                contentDescription = if (isEnergySavingEnabled) "Show preview" else "Hide preview",
+                onClick = { viewModel.toggleEnergySaving() }
             )
         }
 
