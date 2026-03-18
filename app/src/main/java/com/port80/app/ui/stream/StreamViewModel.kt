@@ -81,6 +81,19 @@ class StreamViewModel @Inject constructor(
     /** Last user-facing diagnostic detail for stream startup/connection failures. */
     val lastFailureDetail: StateFlow<String?> = _lastFailureDetail.asStateFlow()
 
+    private val _isEnergySavingEnabled = MutableStateFlow(false)
+
+    /**
+     * Whether energy-saving mode is active.
+     *
+     * When true, the camera preview is hidden behind a dark overlay. The RTMP
+     * stream and camera encoder continue running undisturbed — only the on-screen
+     * display is suppressed. This is implemented entirely in the UI layer so that
+     * neither [stopPreview] nor any encoder operation is triggered, which would
+     * otherwise break the live stream.
+     */
+    val isEnergySavingEnabled: StateFlow<Boolean> = _isEnergySavingEnabled.asStateFlow()
+
     // One-shot UI events (e.g. "service died") — SharedFlow so they're
     // not replayed on recomposition / re-collection.
     private val _uiEvents = MutableSharedFlow<UiEvent>(extraBufferCapacity = 1)
@@ -125,6 +138,12 @@ class StreamViewModel @Inject constructor(
                 viewModelScope.launch {
                     service.streamState.collect { state ->
                         _streamState.value = state
+                        // Energy-saving mode is only meaningful while streaming.
+                        // Reset it automatically so the next session starts with
+                        // preview enabled, regardless of how the previous stream ended.
+                        if (state is StreamState.Idle || state is StreamState.Stopped) {
+                            _isEnergySavingEnabled.value = false
+                        }
                     }
                 }
                 viewModelScope.launch {
@@ -244,6 +263,21 @@ class StreamViewModel @Inject constructor(
      */
     fun switchCamera() {
         serviceControl?.switchCamera()
+    }
+
+    /**
+     * Toggle the energy-saving (preview-hidden) mode on or off.
+     *
+     * This is a **UI-only** toggle — it never touches the encoder, camera, or
+     * RTMP connection. A dark overlay is shown over the SurfaceView so the device
+     * display consumes less power, but video encoding and streaming continue
+     * without interruption.
+     *
+     * Safe to call any number of times while streaming.
+     */
+    fun toggleEnergySaving() {
+        _isEnergySavingEnabled.value = !_isEnergySavingEnabled.value
+        RedactingLogger.d(TAG, "Energy-saving mode toggled: ${_isEnergySavingEnabled.value}")
     }
 
     // ══════════════════════════════════════════════
