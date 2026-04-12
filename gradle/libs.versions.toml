@@ -20,7 +20,7 @@ datastore = "1.1.1"
 securityCrypto = "1.1.0-alpha06"
 
 # ── RootEncoder (RTMP streaming engine, via JitPack) ──
-rootEncoder = "2.5.4"
+rootEncoder = "2.5.5"
 
 # ── Crash reporting ──
 acra = "5.11.4"
