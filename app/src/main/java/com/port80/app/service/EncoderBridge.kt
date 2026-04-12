@@ -1,5 +1,6 @@
 package com.port80.app.service
 
+import android.content.Context
 import com.pedro.library.view.OpenGlView
 import com.port80.app.data.model.StreamProtocol
 
@@ -14,6 +15,20 @@ interface EncoderBridge {
 
     /** Stop the camera preview (streaming continues without display). */
     fun stopPreview()
+
+    /**
+     * Switch to headless background mode while keeping camera capture and
+     * encoder alive. Uses RootEncoder's [Camera2Base.replaceView(Context)]
+     * which swaps the GL surface for an off-screen GlStreamInterface.
+     */
+    fun replaceViewWithBackground(context: Context)
+
+    /**
+     * Hot-swap back to a visible preview surface during an active stream.
+     * Uses RootEncoder's [Camera2Base.replaceView(OpenGlView)] which
+     * re-opens the camera on the new surface without interrupting the stream.
+     */
+    fun replaceView(openGlView: OpenGlView)
 
     /** Configure encoders and connect to the streaming server. */
     fun connect(params: ConnectionParams, config: EncoderConfig)

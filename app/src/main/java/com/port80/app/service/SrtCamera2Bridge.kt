@@ -1,5 +1,6 @@
 package com.port80.app.service
 
+import android.content.Context
 import com.pedro.common.ConnectChecker
 import com.pedro.common.VideoCodec as RootEncoderVideoCodec
 import com.pedro.library.srt.SrtCamera2
@@ -50,6 +51,25 @@ class SrtCamera2Bridge(
     override fun stopPreview() {
         RedactingLogger.d(TAG, "stopPreview()")
         srtCamera2?.stopPreview()
+    }
+
+    override fun replaceViewWithBackground(context: Context) {
+        RedactingLogger.d(TAG, "replaceViewWithBackground() — switching to headless mode")
+        try {
+            srtCamera2?.replaceView(context)
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "replaceViewWithBackground() failed, falling back to stopPreview", e)
+            srtCamera2?.stopPreview()
+        }
+    }
+
+    override fun replaceView(openGlView: OpenGlView) {
+        RedactingLogger.d(TAG, "replaceView() — hot-swapping to new surface")
+        try {
+            srtCamera2?.replaceView(openGlView)
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "replaceView() failed", e)
+        }
     }
 
     // ── Streaming ────────────────────────────────────────────────────────

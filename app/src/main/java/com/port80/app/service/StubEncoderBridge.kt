@@ -1,5 +1,6 @@
 package com.port80.app.service
 
+import android.content.Context
 import com.port80.app.util.RedactingLogger
 import com.pedro.library.view.OpenGlView
 
@@ -19,6 +20,14 @@ class StubEncoderBridge : EncoderBridge {
 
     override fun stopPreview() {
         RedactingLogger.d(TAG, "stopPreview() called")
+    }
+
+    override fun replaceViewWithBackground(context: Context) {
+        RedactingLogger.d(TAG, "replaceViewWithBackground() called")
+    }
+
+    override fun replaceView(openGlView: OpenGlView) {
+        RedactingLogger.d(TAG, "replaceView() called")
     }
 
     override fun connect(params: ConnectionParams, config: EncoderConfig) {
