@@ -31,6 +31,10 @@ class EndpointViewModel @Inject constructor(
         _editingProfile.value = profile
     }
 
+    fun dismissEdit() {
+        _editingProfile.value = null
+    }
+
     fun newProfile() {
         _editingProfile.value = EndpointProfile(
             id = UUID.randomUUID().toString(),

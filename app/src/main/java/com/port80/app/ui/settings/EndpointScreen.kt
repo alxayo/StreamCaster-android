@@ -127,7 +127,7 @@ fun EndpointScreen(
         EditProfileDialog(
             profile = profile,
             onSave = { viewModel.saveProfile(it) },
-            onDismiss = { viewModel.selectProfile(profile) /* reset — ViewModel clears on next newProfile/selectProfile */ }
+            onDismiss = { viewModel.dismissEdit() }
         )
     }
 
