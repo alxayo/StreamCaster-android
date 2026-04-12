@@ -21,5 +21,9 @@ data class StreamStats(
     /** Whether local MP4 recording is active alongside streaming. */
     val isRecording: Boolean = false,
     /** Current device thermal level — affects quality decisions. */
-    val thermalLevel: ThermalLevel = ThermalLevel.NORMAL
+    val thermalLevel: ThermalLevel = ThermalLevel.NORMAL,
+    /** Streaming protocol in use (RTMP, RTMPS, SRT). */
+    val protocol: StreamProtocol? = null,
+    /** Video codec in use (H.264, H.265, AV1). */
+    val videoCodec: VideoCodec? = null,
 )

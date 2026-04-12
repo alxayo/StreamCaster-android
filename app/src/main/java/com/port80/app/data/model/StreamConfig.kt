@@ -9,6 +9,8 @@ package com.port80.app.data.model
 data class StreamConfig(
     /** Which endpoint profile to connect to. */
     val profileId: String,
+    /** Video codec — H.264 (default), H.265 (Enhanced RTMP), or AV1. */
+    val videoCodec: VideoCodec = VideoCodec.H264,
     /** Whether to stream video (false = audio-only mode). */
     val videoEnabled: Boolean = true,
     /** Whether to stream audio (false = video-only mode). */
