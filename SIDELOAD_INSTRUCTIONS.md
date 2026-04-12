@@ -1,75 +1,172 @@
-# StreamCaster Sideload Instructions (Step by Step)
+# StreamCaster — Sideload Quick Reference
 
-This guide installs the APK you just built:
+A concise guide for installing StreamCaster APKs directly onto an Android device. For full documentation, see [README.md](README.md).
 
-- artifacts/streamcaster-foss-debug.apk
+---
 
-## 1. Prerequisites
+## Prerequisites
 
-1. Install Android Platform Tools (adb) on your Mac.
-2. Have a USB cable for your Android device.
-3. On your Android device:
-   - Open Settings > About phone.
-   - Tap Build number 7 times to enable Developer options.
-   - Open Settings > Developer options.
-   - Turn on USB debugging.
+- **ADB** installed on your computer ([download Platform Tools](https://developer.android.com/tools/releases/platform-tools)).
+- **USB cable** (or Wi-Fi for wireless ADB on Android 11+).
+- **Developer Options** and **USB Debugging** enabled on the Android device:
+  1. Settings → About Phone → tap **Build Number** 7 times.
+  2. Settings → Developer Options → enable **USB Debugging**.
 
-## 2. Connect and verify device
+---
 
-1. Connect the Android phone by USB.
-2. In terminal, run:
+## 1. Build the APK
 
-   adb devices
+```bash
+# FOSS debug (recommended — works on all devices, no Google dependencies)
+./gradlew :app:assembleFossDebug
 
-3. If prompted on phone, tap Allow USB debugging.
-4. Confirm your device shows as device (not unauthorized).
+# GMS debug (with Google Play Services support)
+./gradlew :app:assembleGmsDebug
 
-## 3. Install the APK with adb (recommended)
+# FOSS release (minified, requires signing config)
+./gradlew :app:assembleFossRelease
 
-1. From the project root, run:
+# GMS release (minified, requires signing config)
+./gradlew :app:assembleGmsRelease
+```
 
-   adb install -r artifacts/streamcaster-foss-debug.apk
+### APK Locations
 
-2. Wait for Success.
-3. Open StreamCaster on your phone.
+| Variant | Path |
+|---------|------|
+| FOSS debug | `app/build/outputs/apk/foss/debug/app-foss-debug.apk` |
+| FOSS release | `app/build/outputs/apk/foss/release/app-foss-release.apk` |
+| GMS debug | `app/build/outputs/apk/gms/debug/app-gms-debug.apk` |
+| GMS release | `app/build/outputs/apk/gms/release/app-gms-release.apk` |
 
-## 4. If install is blocked by security policy
+A pre-built FOSS debug APK is also available at: `artifacts/streamcaster-foss-debug.apk`
 
-1. Remove old app version first (if package signature differs):
+---
 
-   adb uninstall com.port80.app.foss
+## 2. Connect and Verify Device
 
-2. Re-install:
+### USB
 
-   adb install artifacts/streamcaster-foss-debug.apk
+```bash
+# Plug in the device, then:
+adb devices -l
+```
 
-## 5. Manual sideload (no adb)
+Accept the "Allow USB Debugging" prompt on the phone if it appears. You should see your device listed as `device` (not `unauthorized`).
 
-1. Copy artifacts/streamcaster-foss-debug.apk to your phone (AirDrop, Drive, email, or USB file transfer).
-2. On the phone, open Files and tap the APK.
-3. If prompted, allow Install unknown apps for the app you used to open the file.
-4. Continue install.
+### Wireless ADB (Android 11+)
 
-## 6. Verify app package and launch from adb (optional)
+```bash
+# On the phone: Developer Options → Wireless Debugging → Pair device with pairing code
+adb pair <ip>:<pairing-port>
+# Enter the pairing code
 
-1. Check package installed:
+# Then connect (use the IP:port shown on the Wireless Debugging screen, NOT the pairing port):
+adb connect <ip>:<port>
+```
 
-   adb shell pm list packages | grep com.port80.app.foss
+Both devices must be on the same Wi-Fi network.
 
-2. Launch app:
+---
 
-   adb shell am start -n com.port80.app.foss/com.port80.app.MainActivity
+## 3. Install
 
-## 7. Rebuild for future updates
+### Fresh Install
 
-1. Build new APK:
+```bash
+# FOSS flavor
+adb install app/build/outputs/apk/foss/debug/app-foss-debug.apk
 
-   ./gradlew :app:assembleFossDebug
+# GMS flavor
+adb install app/build/outputs/apk/gms/debug/app-gms-debug.apk
 
-2. Refresh packaged copy:
+# Or from the pre-built artifact
+adb install artifacts/streamcaster-foss-debug.apk
+```
 
-   cp app/build/outputs/apk/foss/debug/app-foss-debug.apk artifacts/streamcaster-foss-debug.apk
+### Update (Replace Existing)
 
-3. Reinstall with replace:
+```bash
+adb install -r app/build/outputs/apk/foss/debug/app-foss-debug.apk
+```
 
-   adb install -r artifacts/streamcaster-foss-debug.apk
+### If Install Is Blocked (Signature Mismatch)
+
+```bash
+# Uninstall the old version first
+adb uninstall com.port80.app.foss    # FOSS flavor
+adb uninstall com.port80.app         # GMS flavor
+
+# Then install fresh
+adb install app/build/outputs/apk/foss/debug/app-foss-debug.apk
+```
+
+---
+
+## 4. Manual Sideload (No ADB)
+
+1. Copy the APK to your phone via USB file transfer, cloud storage, email, or direct download.
+2. Open the APK in the phone's file manager.
+3. If prompted, allow **"Install unknown apps"** for the app you used to open the file.
+4. Tap **Install** → **Open**.
+
+---
+
+## 5. Launch
+
+```bash
+# FOSS flavor
+adb shell am start -n com.port80.app.foss/com.port80.app.MainActivity
+
+# GMS flavor
+adb shell am start -n com.port80.app/com.port80.app.MainActivity
+```
+
+Or open **StreamCaster** from the app drawer.
+
+---
+
+## 6. Verify Installation
+
+```bash
+# Check package is installed
+adb shell pm list packages | grep com.port80.app
+
+# Check version
+adb shell dumpsys package com.port80.app.foss | grep versionName
+```
+
+---
+
+## 7. Rebuild and Update Workflow
+
+After making code changes:
+
+```bash
+./gradlew :app:assembleFossDebug && \
+adb install -r app/build/outputs/apk/foss/debug/app-foss-debug.apk
+```
+
+To refresh the pre-built artifact copy:
+
+```bash
+cp app/build/outputs/apk/foss/debug/app-foss-debug.apk artifacts/streamcaster-foss-debug.apk
+```
+
+---
+
+## 8. Uninstall
+
+```bash
+adb uninstall com.port80.app.foss    # FOSS
+adb uninstall com.port80.app         # GMS
+```
+
+---
+
+## Application IDs
+
+| Flavor | Application ID | Can coexist? |
+|--------|---------------|--------------|
+| FOSS | `com.port80.app.foss` | ✅ Yes — both flavors install side-by-side |
+| GMS | `com.port80.app` | ✅ Yes — different application IDs |
