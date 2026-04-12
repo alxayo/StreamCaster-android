@@ -24,7 +24,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,6 +85,10 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     // -- CPU wake lock: keeps the CPU running while streaming in background --
     private var wakeLock: PowerManager.WakeLock? = null
+
+    // -- Stats ticker: updates durationMs at ~1 Hz while streaming --
+    private var streamStartTimeMs: Long = 0L
+    private var statsTickerJob: Job? = null
 
     // -- Binder for Activity/ViewModel to communicate with this service --
     inner class LocalBinder : Binder() {
@@ -146,6 +152,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
         _streamState.value = StreamState.Connecting
         _lastFailureDetail.value = null
+        _streamStats.value = StreamStats()
         RedactingLogger.i(TAG, "Starting stream with profile: $profileId")
 
         serviceScope.launch { startStreamInternal(profileId) }
@@ -212,6 +219,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     /** Clean up all streaming resources. */
     private fun cleanupAndStop() {
+        stopStatsTicker()
         releaseWakeLock()
         try {
             encoderBridge?.disconnect()
@@ -243,6 +251,23 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             }
         }
         wakeLock = null
+    }
+
+    private fun startStatsTicker() {
+        statsTickerJob?.cancel()
+        streamStartTimeMs = System.currentTimeMillis()
+        statsTickerJob = serviceScope.launch {
+            while (true) {
+                delay(1_000L)
+                val elapsed = System.currentTimeMillis() - streamStartTimeMs
+                _streamStats.value = _streamStats.value.copy(durationMs = elapsed)
+            }
+        }
+    }
+
+    private fun stopStatsTicker() {
+        statsTickerJob?.cancel()
+        statsTickerJob = null
     }
 
     private suspend fun startStreamInternal(profileId: String) {
@@ -359,6 +384,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         RedactingLogger.i(TAG, "RTMP connection succeeded — stream is live")
         _lastFailureDetail.value = null
         _streamState.value = StreamState.Live()
+        startStatsTicker()
     }
 
     override fun onConnectionFailed(reason: String) {
