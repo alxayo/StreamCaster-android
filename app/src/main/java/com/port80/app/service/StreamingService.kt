@@ -201,16 +201,30 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     override fun attachPreviewSurface(openGlView: OpenGlView) {
         currentSurface = openGlView
         val state = _streamState.value
-        if (state is StreamState.Live || state == StreamState.Connecting) {
-            encoderBridge?.startPreview(openGlView)
+        if (state is StreamState.Live || state == StreamState.Connecting ||
+            state is StreamState.Reconnecting
+        ) {
+            // Hot-swap the surface back while keeping the stream alive
+            encoderBridge?.replaceView(openGlView)
+            RedactingLogger.d(TAG, "Preview surface re-attached via replaceView (stream active)")
+        } else {
+            RedactingLogger.d(TAG, "Preview surface attached (stream not active)")
         }
-        RedactingLogger.d(TAG, "Preview surface attached")
     }
 
     override fun detachPreviewSurface() {
         currentSurface = null
-        encoderBridge?.stopPreview()
-        RedactingLogger.d(TAG, "Preview surface detached")
+        val state = _streamState.value
+        if (state is StreamState.Live || state == StreamState.Connecting ||
+            state is StreamState.Reconnecting
+        ) {
+            // Switch to headless background mode — camera keeps capturing
+            encoderBridge?.replaceViewWithBackground(this)
+            RedactingLogger.d(TAG, "Preview surface detached — switched to background mode (stream active)")
+        } else {
+            encoderBridge?.stopPreview()
+            RedactingLogger.d(TAG, "Preview surface detached — stopped preview (stream not active)")
+        }
     }
 
     // ==========================================================
