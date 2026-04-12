@@ -165,7 +165,7 @@ class EncryptedEndpointProfileRepository @Inject constructor(
         val defaultProfile = EndpointProfile(
             id = DEFAULT_PROFILE_ID,
             name = DEFAULT_PROFILE_NAME,
-            rtmpUrl = DEFAULT_RTMP_URL,
+            url = DEFAULT_RTMP_URL,
             streamKey = DEFAULT_STREAM_KEY
         )
 
@@ -205,6 +205,7 @@ internal object ProfileSerializer {
 
     private const val KEY_ID = "id"
     private const val KEY_NAME = "name"
+    private const val KEY_URL = "url"
     private const val KEY_RTMP_URL = "rtmpUrl"
     private const val KEY_STREAM_KEY = "streamKey"
     private const val KEY_USERNAME = "username"
@@ -214,7 +215,7 @@ internal object ProfileSerializer {
     fun toMap(profile: EndpointProfile): Map<String, Any?> = buildMap {
         put(KEY_ID, profile.id)
         put(KEY_NAME, profile.name)
-        put(KEY_RTMP_URL, profile.rtmpUrl)
+        put(KEY_URL, profile.url)
         put(KEY_STREAM_KEY, profile.streamKey)
         put(KEY_USERNAME, profile.username)
         put(KEY_PASSWORD, profile.password)
@@ -224,7 +225,7 @@ internal object ProfileSerializer {
     fun fromMap(map: Map<String, Any?>): EndpointProfile = EndpointProfile(
         id = map[KEY_ID] as String,
         name = map[KEY_NAME] as String,
-        rtmpUrl = map[KEY_RTMP_URL] as String,
+        url = (map[KEY_URL] ?: map[KEY_RTMP_URL]) as String,
         streamKey = map[KEY_STREAM_KEY] as String,
         username = map[KEY_USERNAME] as? String,
         password = map[KEY_PASSWORD] as? String,

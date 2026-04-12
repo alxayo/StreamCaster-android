@@ -32,8 +32,14 @@ object CredentialSanitizer {
     // Matches sensitive query parameters and their values
     // Captures the parameter name and replaces only the value
     private val SENSITIVE_PARAM_PATTERN = Regex(
-        """((?:streamKey|stream_key|key|password|passwd|auth|token|secret)=)[^\s&]+""",
+        """((?:streamKey|stream_key|key|password|passwd|auth|token|secret|passphrase|streamid)=)[^\s&]+""",
         RegexOption.IGNORE_CASE
+    )
+
+    // Matches SRT URLs: srt://host:port?params
+    // Group 1 captures the host:port portion; query params are sanitized by SENSITIVE_PARAM_PATTERN
+    private val SRT_URL_PATTERN = Regex(
+        """(srt://[^?\s]+)\?[^\s]+"""
     )
 
     /**
