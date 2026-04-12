@@ -2,7 +2,9 @@ package com.port80.app.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,8 +23,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import com.port80.app.BuildConfig
 
 /**
  * Settings hub — shows a list of settings categories the user can tap into.
@@ -87,6 +92,17 @@ fun SettingsHubScreen(
                 title = "General",
                 description = "Adaptive bitrate, camera, orientation, battery thresholds",
                 onClick = onNavigateToGeneral
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Text(
+                text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_COMMIT_SHORT})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 16.dp)
             )
         }
     }

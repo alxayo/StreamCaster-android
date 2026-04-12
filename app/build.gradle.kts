@@ -21,6 +21,12 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Embed the short git commit hash so the app can display it.
+        val gitCommit = providers.exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+        }.standardOutput.asText.get().trim()
+        buildConfigField("String", "GIT_COMMIT_SHORT", "\"$gitCommit\"")
     }
 
     // Product flavors: "foss" for F-Droid (no Google services),
