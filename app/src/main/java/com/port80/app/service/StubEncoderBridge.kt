@@ -6,7 +6,6 @@ import com.pedro.library.view.OpenGlView
 /**
  * A fake encoder bridge used during development and testing.
  * It doesn't actually stream — it just logs method calls.
- * This will be replaced by RtmpCamera2EncoderBridge in T-007b.
  */
 class StubEncoderBridge : EncoderBridge {
     private companion object {
@@ -22,8 +21,8 @@ class StubEncoderBridge : EncoderBridge {
         RedactingLogger.d(TAG, "stopPreview() called")
     }
 
-    override fun connect(url: String, streamKey: String) {
-        RedactingLogger.d(TAG, "connect() called (URL redacted)")
+    override fun connect(params: ConnectionParams, config: EncoderConfig) {
+        RedactingLogger.d(TAG, "connect() called (params redacted)")
         streaming = true
     }
 

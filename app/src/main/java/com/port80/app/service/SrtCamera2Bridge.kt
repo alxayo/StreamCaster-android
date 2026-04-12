@@ -2,44 +2,43 @@ package com.port80.app.service
 
 import com.pedro.common.ConnectChecker
 import com.pedro.common.VideoCodec as RootEncoderVideoCodec
-import com.pedro.library.rtmp.RtmpCamera2
+import com.pedro.library.srt.SrtCamera2
 import com.pedro.library.view.OpenGlView
+import com.port80.app.data.model.SrtMode
 import com.port80.app.data.model.VideoCodec
 import com.port80.app.util.RedactingLogger
 
 /**
- * Real implementation of [EncoderBridge] backed by RootEncoder's [RtmpCamera2].
+ * [EncoderBridge] implementation backed by RootEncoder's [SrtCamera2].
  *
- * Handles RTMP and RTMPS connections. For Enhanced RTMP, sets the codec to
- * H.265 or AV1 via RootEncoder's [RootEncoderVideoCodec] enum before preparing
- * the video encoder.
+ * Handles SRT (Secure Reliable Transport) connections with support for:
+ * - Caller, Listener, and Rendezvous modes
+ * - Encryption via passphrase (AES)
+ * - Configurable latency and stream ID
+ * - H.264 and H.265 codecs (AV1 is NOT supported over SRT by RootEncoder)
  *
- * Lifecycle (matches StreamingService flow):
- * 1. [startPreview] — opens the camera and begins rendering frames
- * 2. [connect]      — configures encoders with codec/resolution/bitrate and starts streaming
- * 3. [disconnect]   — stops the stream (camera stays open)
- * 4. [stopPreview]  — stops camera capture
- * 5. [release]      — frees all resources
+ * The SRT URL is built internally from [ConnectionParams.Srt] fields,
+ * keeping protocol details encapsulated in the bridge.
  */
-class RtmpCamera2Bridge(
+class SrtCamera2Bridge(
     private val connectChecker: ConnectChecker
 ) : EncoderBridge {
 
     companion object {
-        private const val TAG = "RtmpCamera2Bridge"
+        private const val TAG = "SrtCamera2Bridge"
     }
 
-    private var rtmpCamera2: RtmpCamera2? = null
+    private var srtCamera2: SrtCamera2? = null
 
     // ── Preview ──────────────────────────────────────────────────────────
 
     override fun startPreview(openGlView: OpenGlView) {
         RedactingLogger.d(TAG, "startPreview()")
         try {
-            rtmpCamera2 = RtmpCamera2(openGlView, connectChecker)
-            RedactingLogger.d(TAG, "RtmpCamera2 instance created with OpenGlView")
-            rtmpCamera2?.startPreview()
-            RedactingLogger.d(TAG, "startPreview() completed (isOnPreview=${rtmpCamera2?.isOnPreview == true})")
+            srtCamera2 = SrtCamera2(openGlView, connectChecker)
+            RedactingLogger.d(TAG, "SrtCamera2 instance created with OpenGlView")
+            srtCamera2?.startPreview()
+            RedactingLogger.d(TAG, "startPreview() completed (isOnPreview=${srtCamera2?.isOnPreview == true})")
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "startPreview() failed", e)
             connectChecker.onConnectionFailed(
@@ -50,15 +49,16 @@ class RtmpCamera2Bridge(
 
     override fun stopPreview() {
         RedactingLogger.d(TAG, "stopPreview()")
-        rtmpCamera2?.stopPreview()
+        srtCamera2?.stopPreview()
     }
 
     // ── Streaming ────────────────────────────────────────────────────────
 
     override fun connect(params: ConnectionParams, config: EncoderConfig) {
-        require(params is ConnectionParams.Rtmp) { "RtmpCamera2Bridge requires ConnectionParams.Rtmp" }
+        require(params is ConnectionParams.Srt) { "SrtCamera2Bridge requires ConnectionParams.Srt" }
+        require(config.videoCodec != VideoCodec.AV1) { "AV1 is not supported over SRT" }
 
-        val camera = rtmpCamera2
+        val camera = srtCamera2
         if (camera == null) {
             RedactingLogger.e(TAG, "connect() called before startPreview() — ignoring")
             connectChecker.onConnectionFailed("CAMERA_NOT_INITIALIZED: connect called before preview")
@@ -67,10 +67,10 @@ class RtmpCamera2Bridge(
 
         RedactingLogger.d(
             TAG,
-            "connect() begin (codec=${config.videoCodec}, isOnPreview=${camera.isOnPreview})"
+            "connect() begin (codec=${config.videoCodec}, mode=${params.mode}, isOnPreview=${camera.isOnPreview})"
         )
 
-        // Set the video codec for Enhanced RTMP (H.265/AV1)
+        // Set codec (H.264 or H.265 for SRT)
         camera.setVideoCodec(config.videoCodec.toRootEncoder())
 
         val videoReady: Boolean
@@ -102,11 +102,12 @@ class RtmpCamera2Bridge(
             return
         }
 
-        val fullUrl = if (params.streamKey.isNotBlank()) "${params.baseUrl}/${params.streamKey}" else params.baseUrl
-        RedactingLogger.i(TAG, "Connecting to $fullUrl")
+        val srtUrl = buildSrtUrl(params)
+        // Log without secrets — CredentialSanitizer handles passphrase redaction
+        RedactingLogger.i(TAG, "Connecting to $srtUrl")
         try {
-            camera.startStream(fullUrl)
-            RedactingLogger.d(TAG, "startStream() invoked on encoder")
+            camera.startStream(srtUrl)
+            RedactingLogger.d(TAG, "startStream() invoked on SRT encoder")
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "startStream() failed", e)
             connectChecker.onConnectionFailed(
@@ -116,7 +117,7 @@ class RtmpCamera2Bridge(
     }
 
     override fun disconnect() {
-        val camera = rtmpCamera2
+        val camera = srtCamera2
         RedactingLogger.d(
             TAG,
             "disconnect() (hasCamera=${camera != null}, isStreaming=${camera?.isStreaming == true})"
@@ -129,7 +130,7 @@ class RtmpCamera2Bridge(
     override fun switchCamera() {
         RedactingLogger.d(TAG, "switchCamera()")
         try {
-            rtmpCamera2?.switchCamera()
+            srtCamera2?.switchCamera()
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Failed to switch camera", e)
         }
@@ -140,14 +141,14 @@ class RtmpCamera2Bridge(
     override fun setVideoBitrateOnFly(bitrateKbps: Int) {
         val bitrateBps = bitrateKbps * 1000
         RedactingLogger.d(TAG, "setVideoBitrateOnFly(${bitrateKbps} kbps → $bitrateBps bps)")
-        rtmpCamera2?.setVideoBitrateOnFly(bitrateBps)
+        srtCamera2?.setVideoBitrateOnFly(bitrateBps)
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     override fun release() {
         RedactingLogger.d(TAG, "release()")
-        rtmpCamera2?.let { camera ->
+        srtCamera2?.let { camera ->
             RedactingLogger.d(
                 TAG,
                 "release() begin (isStreaming=${camera.isStreaming}, isOnPreview=${camera.isOnPreview})"
@@ -159,12 +160,39 @@ class RtmpCamera2Bridge(
                 camera.stopPreview()
             }
         }
-        rtmpCamera2 = null
+        srtCamera2 = null
         RedactingLogger.d(TAG, "release() completed")
     }
 
     override fun isStreaming(): Boolean {
-        return rtmpCamera2?.isStreaming == true
+        return srtCamera2?.isStreaming == true
+    }
+
+    // ── SRT URL builder ──────────────────────────────────────────────────
+
+    /**
+     * Build the SRT URL from typed parameters.
+     * Format: srt://host:port?mode=caller&latency=120&passphrase=X&streamid=Y
+     */
+    private fun buildSrtUrl(params: ConnectionParams.Srt): String {
+        val sb = StringBuilder("srt://${params.host}:${params.port}")
+        val queryParams = mutableListOf<String>()
+
+        queryParams.add("mode=${params.mode.toUrlParam()}")
+        queryParams.add("latency=${params.latencyMs}")
+
+        if (!params.passphrase.isNullOrBlank()) {
+            queryParams.add("passphrase=${params.passphrase}")
+        }
+        if (!params.streamId.isNullOrBlank()) {
+            queryParams.add("streamid=${params.streamId}")
+        }
+
+        if (queryParams.isNotEmpty()) {
+            sb.append("?")
+            sb.append(queryParams.joinToString("&"))
+        }
+        return sb.toString()
     }
 }
 
