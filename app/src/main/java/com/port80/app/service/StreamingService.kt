@@ -13,9 +13,11 @@ import com.pedro.library.view.OpenGlView
 import com.port80.app.crash.CredentialSanitizer
 import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
+import com.port80.app.data.model.StreamProtocol
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
 import com.port80.app.data.model.StopReason
+import com.port80.app.data.model.VideoCodec
 import com.port80.app.util.RedactingLogger
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -68,8 +71,8 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     private val _lastFailureDetail = MutableStateFlow<String?>(null)
     override val lastFailureDetail: StateFlow<String?> = _lastFailureDetail.asStateFlow()
 
-    // -- Encoder: real RtmpCamera2 bridge, constructed once the service context is ready --
-    private val encoderBridge: EncoderBridge by lazy { encoderBridgeFactory.create(this) }
+    // -- Encoder: created per-session based on profile protocol --
+    private var encoderBridge: EncoderBridge? = null
 
     // -- Coroutine scope tied to service lifecycle --
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -179,24 +182,23 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun switchCamera() {
         if (_streamState.value is StreamState.Live) {
-            encoderBridge.switchCamera()
+            encoderBridge?.switchCamera()
             RedactingLogger.d(TAG, "Camera switched")
         }
     }
 
     override fun attachPreviewSurface(openGlView: OpenGlView) {
         currentSurface = openGlView
-        // Only start preview if we're in a state that has the camera active
         val state = _streamState.value
         if (state is StreamState.Live || state == StreamState.Connecting) {
-            encoderBridge.startPreview(openGlView)
+            encoderBridge?.startPreview(openGlView)
         }
         RedactingLogger.d(TAG, "Preview surface attached")
     }
 
     override fun detachPreviewSurface() {
         currentSurface = null
-        encoderBridge.stopPreview()
+        encoderBridge?.stopPreview()
         RedactingLogger.d(TAG, "Preview surface detached")
     }
 
@@ -207,8 +209,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     /** Clean up all streaming resources. */
     private fun cleanupAndStop() {
         try {
-            encoderBridge.disconnect()
-            encoderBridge.release()
+            encoderBridge?.disconnect()
+            encoderBridge?.release()
+            encoderBridge = null
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Error during cleanup", e)
         }
@@ -223,10 +226,26 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                 return
             }
 
+            // Validate codec/protocol compatibility
+            val protocol = StreamProtocol.fromUrl(profile.url)
+            if (protocol == StreamProtocol.SRT && !profile.videoCodec.supportsSrt()) {
+                RedactingLogger.e(TAG, "Codec ${profile.videoCodec} is not supported over SRT")
+                _lastFailureDetail.value = "AV1 codec is not supported over SRT. Use H.264 or H.265."
+                _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
+                return
+            }
+
+            // Create per-session bridge for the correct protocol
+            encoderBridge?.release()
+            encoderBridge = encoderBridgeFactory.create(this, protocol)
+
             ensurePreview()
 
+            val connectionParams = buildConnectionParams(profile, protocol)
+            val encoderConfig = buildEncoderConfig(profile)
+
             RedactingLogger.d(TAG, "startStream(): invoking encoderBridge.connect()")
-            encoderBridge.connect(profile.rtmpUrl, profile.streamKey)
+            encoderBridge?.connect(connectionParams, encoderConfig)
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Failed to start stream", e)
             _lastFailureDetail.value =
@@ -235,13 +254,67 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         }
     }
 
+    private fun buildConnectionParams(
+        profile: com.port80.app.data.model.EndpointProfile,
+        protocol: StreamProtocol
+    ): ConnectionParams = when (protocol) {
+        StreamProtocol.RTMP, StreamProtocol.RTMPS -> ConnectionParams.Rtmp(
+            baseUrl = profile.url,
+            streamKey = profile.streamKey,
+            username = profile.username,
+            password = profile.password,
+            videoCodec = profile.videoCodec,
+        )
+        StreamProtocol.SRT -> ConnectionParams.Srt(
+            host = parseSrtHost(profile.url),
+            port = parseSrtPort(profile.url),
+            passphrase = profile.srtPassphrase,
+            latencyMs = profile.srtLatencyMs,
+            mode = profile.srtMode,
+            streamId = profile.srtStreamId,
+            videoCodec = profile.videoCodec,
+        )
+    }
+
+    private fun parseSrtHost(url: String): String {
+        val withoutProtocol = url.substringAfter("://")
+        return withoutProtocol.substringBefore(":").substringBefore("/").substringBefore("?")
+    }
+
+    private fun parseSrtPort(url: String): Int {
+        val withoutProtocol = url.substringAfter("://")
+        val hostPort = withoutProtocol.substringBefore("?").substringBefore("/")
+        return if (hostPort.contains(":")) {
+            hostPort.substringAfter(":").toIntOrNull() ?: 8888
+        } else {
+            8888
+        }
+    }
+
+    private suspend fun buildEncoderConfig(
+        profile: com.port80.app.data.model.EndpointProfile
+    ): EncoderConfig {
+        val resolution = settingsRepository.getResolution().first()
+        return EncoderConfig(
+            videoCodec = profile.videoCodec,
+            width = resolution.width,
+            height = resolution.height,
+            fps = settingsRepository.getFps().first(),
+            videoBitrateKbps = settingsRepository.getVideoBitrateKbps().first(),
+            audioBitrateKbps = settingsRepository.getAudioBitrateKbps().first(),
+            audioSampleRate = settingsRepository.getAudioSampleRate().first(),
+            stereo = settingsRepository.getStereo().first(),
+            keyframeIntervalSec = settingsRepository.getKeyframeIntervalSec().first(),
+        )
+    }
+
     private fun ensurePreview() {
         val surface = currentSurface
         if (surface == null) {
             RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
         } else {
             RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview")
-            encoderBridge.startPreview(surface)
+            encoderBridge?.startPreview(surface)
         }
     }
 
@@ -277,7 +350,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         val previousState = _streamState.value
         RedactingLogger.w(
             TAG,
-            "RTMP disconnected (previousState=$previousState, encoderStreaming=${encoderBridge.isStreaming()})"
+            "Disconnected (previousState=$previousState, encoderStreaming=${encoderBridge?.isStreaming() == true})"
         )
         if (previousState is StreamState.Live || previousState is StreamState.Reconnecting) {
             _lastFailureDetail.value =
