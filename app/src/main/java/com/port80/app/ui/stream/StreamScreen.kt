@@ -36,9 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Activity
+import android.view.WindowManager
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.port80.app.data.model.StopReason
 import com.port80.app.data.model.StreamState
@@ -75,7 +77,7 @@ fun StreamScreen(
 
     // Keep screen on while streaming (when enabled in settings)
     val keepScreenOn by viewModel.keepScreenOnSetting.collectAsState()
-    val view = LocalView.current
+    val activity = LocalContext.current as? Activity
 
     val isActiveStream = streamState is StreamState.Connecting ||
         streamState is StreamState.Live ||
@@ -83,9 +85,16 @@ fun StreamScreen(
 
     val isMinimalMode by viewModel.isMinimalMode.collectAsState()
 
+    // Use Activity window flag so it survives in-app navigation
     DisposableEffect(isActiveStream, keepScreenOn) {
-        view.keepScreenOn = isActiveStream && keepScreenOn
-        onDispose { view.keepScreenOn = false }
+        if (isActiveStream && keepScreenOn) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
