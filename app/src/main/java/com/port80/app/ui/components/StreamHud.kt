@@ -47,8 +47,23 @@ fun StreamHud(
         // Center: duration
         HudText(formatDuration(stats.durationMs))
 
-        // Right side: recording indicator and thermal badge
+        // Right side: protocol badge, codec badge, recording indicator, thermal badge
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            stats.protocol?.let { protocol ->
+                HudBadge(
+                    text = protocol.name,
+                    color = when (protocol) {
+                        com.port80.app.data.model.StreamProtocol.RTMPS -> Color.Green
+                        com.port80.app.data.model.StreamProtocol.SRT -> Color.Cyan
+                        else -> Color.White
+                    }
+                )
+            }
+            stats.videoCodec?.let { codec ->
+                if (codec != com.port80.app.data.model.VideoCodec.H264) {
+                    HudBadge(text = codec.displayName(), color = Color(0xFFBB86FC))
+                }
+            }
             if (stats.isRecording) {
                 HudBadge("REC", Color.Red)
             }

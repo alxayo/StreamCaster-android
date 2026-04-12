@@ -44,6 +44,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.port80.app.data.model.EndpointProfile
+import com.port80.app.data.model.SrtMode
+import com.port80.app.data.model.StreamProtocol
+import com.port80.app.data.model.VideoCodec
 
 /**
  * Screen for managing RTMP endpoint profiles (streaming destinations).
@@ -211,14 +214,32 @@ private fun ProfileCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // ── Masked RTMP URL ─────────────────────────────────
-            // Show the server portion but mask the path to avoid leaking
-            // application names in casual over-the-shoulder viewing.
-            Text(
-                text = maskUrl(profile.rtmpUrl),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // ── Masked URL + badges ─────────────────────────────
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = maskUrl(profile.url),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                // Protocol badge
+                Text(
+                    text = profile.protocol.name,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                // Codec badge (only if non-default)
+                if (profile.videoCodec != VideoCodec.H264) {
+                    Text(
+                        text = profile.videoCodec.displayName(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
 
             // Show "Default" badge if this is the active profile.
             if (profile.isDefault) {
@@ -237,7 +258,7 @@ private fun ProfileCard(
 
 /**
  * Full-screen-style dialog for editing or creating a profile.
- * All credential fields are editable; the stream key is hidden by default.
+ * Shows/hides fields based on the detected protocol (RTMP/RTMPS vs SRT).
  */
 @Composable
 private fun EditProfileDialog(
@@ -247,16 +268,37 @@ private fun EditProfileDialog(
 ) {
     // Local state for each editable field. Initialized from the profile.
     var name by remember(profile.id) { mutableStateOf(profile.name) }
-    var rtmpUrl by remember(profile.id) { mutableStateOf(profile.rtmpUrl) }
+    var url by remember(profile.id) { mutableStateOf(profile.url) }
     var streamKey by remember(profile.id) { mutableStateOf(profile.streamKey) }
     var username by remember(profile.id) { mutableStateOf(profile.username ?: "") }
     var password by remember(profile.id) { mutableStateOf(profile.password ?: "") }
 
+    // SRT-specific fields
+    var srtPassphrase by remember(profile.id) { mutableStateOf(profile.srtPassphrase ?: "") }
+    var srtLatencyMs by remember(profile.id) { mutableStateOf(profile.srtLatencyMs.toString()) }
+    var srtMode by remember(profile.id) { mutableStateOf(profile.srtMode) }
+    var srtStreamId by remember(profile.id) { mutableStateOf(profile.srtStreamId ?: "") }
+    var videoCodec by remember(profile.id) { mutableStateOf(profile.videoCodec) }
+
     // Toggle to reveal/hide the stream key and password fields.
     var streamKeyVisible by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var passphraseVisible by remember { mutableStateOf(false) }
 
-    val isNewProfile = profile.name.isBlank() && profile.rtmpUrl.isBlank()
+    val isNewProfile = profile.name.isBlank() && profile.url.isBlank()
+    val detectedProtocol = StreamProtocol.fromUrl(url)
+    val isSrt = detectedProtocol == StreamProtocol.SRT
+
+    // Filter codecs: AV1 not available for SRT
+    val availableCodecs = if (isSrt) {
+        VideoCodec.entries.filter { it.supportsSrt() }
+    } else {
+        VideoCodec.entries.toList()
+    }
+    // Auto-correct codec if user switches to SRT with AV1 selected
+    if (isSrt && !videoCodec.supportsSrt()) {
+        videoCodec = VideoCodec.H264
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -279,75 +321,201 @@ private fun EditProfileDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // ── RTMP URL ────────────────────────────────────
+                // ── Server URL ──────────────────────────────────
                 OutlinedTextField(
-                    value = rtmpUrl,
-                    onValueChange = { rtmpUrl = it },
-                    label = { Text("RTMP URL") },
-                    placeholder = { Text("rtmp://ingest.example.com/live") },
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Server URL") },
+                    placeholder = {
+                        Text(
+                            if (isSrt) "srt://ingest.example.com:9000"
+                            else "rtmp://ingest.example.com/live"
+                        )
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Protocol badge
+                if (url.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Protocol: ${detectedProtocol.name}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // ── Stream Key (hidden by default for security) ─
-                OutlinedTextField(
-                    value = streamKey,
-                    onValueChange = { streamKey = it },
-                    label = { Text("Stream Key") },
-                    singleLine = true,
-                    visualTransformation = if (streamKeyVisible) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    trailingIcon = {
-                        TextButton(onClick = { streamKeyVisible = !streamKeyVisible }) {
-                            Text(if (streamKeyVisible) "Hide" else "Show")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // ── Optional Auth Section ───────────────────────
+                // ── Video Codec picker ──────────────────────────
                 Text(
-                    text = "Optional Authentication",
+                    text = "Video Codec",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Username") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    visualTransformation = if (passwordVisible) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    trailingIcon = {
-                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Text(if (passwordVisible) "Hide" else "Show")
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    availableCodecs.forEach { codec ->
+                        TextButton(
+                            onClick = { videoCodec = codec },
+                        ) {
+                            Text(
+                                text = codec.displayName(),
+                                color = if (videoCodec == codec) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    }
+                }
+                if (videoCodec.isEnhancedRtmp() && !isSrt) {
+                    Text(
+                        text = "⚠ Enhanced RTMP — ensure your server supports ${videoCodec.displayName()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (!isSrt) {
+                    // ── RTMP/RTMPS-specific fields ──────────────
+                    OutlinedTextField(
+                        value = streamKey,
+                        onValueChange = { streamKey = it },
+                        label = { Text("Stream Key") },
+                        singleLine = true,
+                        visualTransformation = if (streamKeyVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        trailingIcon = {
+                            TextButton(onClick = { streamKeyVisible = !streamKeyVisible }) {
+                                Text(if (streamKeyVisible) "Hide" else "Show")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "Optional Authentication",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text("Username") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        trailingIcon = {
+                            TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Text(if (passwordVisible) "Hide" else "Show")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    // ── SRT-specific fields ─────────────────────
+
+                    // Passphrase (encrypted credential)
+                    OutlinedTextField(
+                        value = srtPassphrase,
+                        onValueChange = { srtPassphrase = it },
+                        label = { Text("Passphrase (optional)") },
+                        placeholder = { Text("10–79 characters for AES encryption") },
+                        singleLine = true,
+                        visualTransformation = if (passphraseVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        trailingIcon = {
+                            TextButton(onClick = { passphraseVisible = !passphraseVisible }) {
+                                Text(if (passphraseVisible) "Hide" else "Show")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Latency
+                    OutlinedTextField(
+                        value = srtLatencyMs,
+                        onValueChange = { srtLatencyMs = it },
+                        label = { Text("Latency (ms)") },
+                        placeholder = { Text("120") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // SRT Mode picker
+                    Text(
+                        text = "Connection Mode",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SrtMode.entries.forEach { mode ->
+                            TextButton(onClick = { srtMode = mode }) {
+                                Text(
+                                    text = mode.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    color = if (srtMode == mode) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    if (srtMode != SrtMode.CALLER) {
+                        Text(
+                            text = "⚠ ${srtMode.name} mode is experimental in RootEncoder",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Stream ID
+                    OutlinedTextField(
+                        value = srtStreamId,
+                        onValueChange = { srtStreamId = it },
+                        label = { Text("Stream ID (optional)") },
+                        placeholder = { Text("Server-side routing key") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         // Save button — constructs an updated profile from local state.
@@ -357,15 +525,21 @@ private fun EditProfileDialog(
                     onSave(
                         profile.copy(
                             name = name.trim(),
-                            rtmpUrl = rtmpUrl.trim(),
-                            streamKey = streamKey.trim(),
-                            username = username.trim().ifBlank { null },
-                            password = password.trim().ifBlank { null }
+                            url = url.trim(),
+                            streamKey = if (isSrt) "" else streamKey.trim(),
+                            username = if (isSrt) null else username.trim().ifBlank { null },
+                            password = if (isSrt) null else password.trim().ifBlank { null },
+                            videoCodec = videoCodec,
+                            srtPassphrase = if (isSrt) srtPassphrase.trim().ifBlank { null } else null,
+                            srtLatencyMs = if (isSrt) (srtLatencyMs.toIntOrNull() ?: 120) else 120,
+                            srtMode = if (isSrt) srtMode else SrtMode.CALLER,
+                            srtStreamId = if (isSrt) srtStreamId.trim().ifBlank { null } else null,
                         )
                     )
                 },
                 // Disable Save unless required fields are filled.
-                enabled = name.isNotBlank() && rtmpUrl.isNotBlank() && streamKey.isNotBlank()
+                // SRT: only name + url required. RTMP: name + url + streamKey.
+                enabled = name.isNotBlank() && url.isNotBlank() && (isSrt || streamKey.isNotBlank())
             ) {
                 Text("Save")
             }
@@ -433,20 +607,24 @@ private fun EmptyState() {
 // ── Helpers ─────────────────────────────────────────────────────
 
 /**
- * Masks an RTMP URL for display in the profile list.
- * Shows the scheme and host but replaces the path with asterisks
- * so that app names or keys embedded in the URL aren't visible at a glance.
- *
- * Example: `rtmp://ingest.example.com/live/sk_12345` becomes `rtmp://ingest.example.com/...`
+ * Masks a streaming URL for display in the profile list.
+ * Shows the scheme and host but masks the path/params.
  */
 private fun maskUrl(url: String): String {
     if (url.isBlank()) return ""
-    // Find the third slash (after "rtmp://host")
     val schemeEnd = url.indexOf("://")
     if (schemeEnd < 0) return url
-    val pathStart = url.indexOf('/', schemeEnd + 3)
+
+    val afterScheme = url.substring(schemeEnd + 3)
+    // For SRT, mask query params (which may contain passphrase)
+    val queryStart = afterScheme.indexOf('?')
+    if (queryStart >= 0) {
+        return url.substring(0, schemeEnd + 3 + queryStart) + "?****"
+    }
+    // For RTMP, mask path after host
+    val pathStart = afterScheme.indexOf('/')
     return if (pathStart >= 0) {
-        url.substring(0, pathStart) + "/****"
+        url.substring(0, schemeEnd + 3 + pathStart) + "/****"
     } else {
         url
     }

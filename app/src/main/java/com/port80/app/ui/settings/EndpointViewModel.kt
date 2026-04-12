@@ -35,7 +35,7 @@ class EndpointViewModel @Inject constructor(
         _editingProfile.value = EndpointProfile(
             id = UUID.randomUUID().toString(),
             name = "",
-            rtmpUrl = "",
+            url = "",
             streamKey = ""
         )
     }
