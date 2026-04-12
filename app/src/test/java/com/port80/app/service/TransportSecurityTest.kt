@@ -134,4 +134,73 @@ class TransportSecurityTest {
         assertTrue(warning.contains("unencrypted", ignoreCase = true))
         assertTrue(warning.contains("RTMPS", ignoreCase = false))
     }
+
+    // --- SRT transport security ---
+
+    @Test
+    fun `isSecureTransport returns true for SRT with passphrase`() {
+        assertTrue(TransportSecurity.isSecureTransport("srt://host:9000", "mysecret"))
+    }
+
+    @Test
+    fun `isSecureTransport returns false for SRT without passphrase`() {
+        assertFalse(TransportSecurity.isSecureTransport("srt://host:9000"))
+        assertFalse(TransportSecurity.isSecureTransport("srt://host:9000", null))
+        assertFalse(TransportSecurity.isSecureTransport("srt://host:9000", ""))
+    }
+
+    @Test
+    fun `isUnencryptedSrt returns true for SRT without passphrase`() {
+        assertTrue(TransportSecurity.isUnencryptedSrt("srt://host:9000"))
+        assertTrue(TransportSecurity.isUnencryptedSrt("srt://host:9000", null))
+        assertTrue(TransportSecurity.isUnencryptedSrt("srt://host:9000", ""))
+    }
+
+    @Test
+    fun `isUnencryptedSrt returns false for SRT with passphrase`() {
+        assertFalse(TransportSecurity.isUnencryptedSrt("srt://host:9000", "secret"))
+    }
+
+    @Test
+    fun `isUnencryptedSrt returns false for RTMP URLs`() {
+        assertFalse(TransportSecurity.isUnencryptedSrt("rtmp://host/app"))
+    }
+
+    @Test
+    fun `validateUrl accepts valid SRT URL with port`() {
+        assertNull(TransportSecurity.validateUrl("srt://host.com:9000"))
+    }
+
+    @Test
+    fun `validateUrl accepts SRT URL with query params`() {
+        assertNull(TransportSecurity.validateUrl("srt://host.com:9000?mode=caller&latency=120"))
+    }
+
+    @Test
+    fun `validateUrl rejects SRT URL without port`() {
+        val error = TransportSecurity.validateUrl("srt://host.com")
+        assertNotNull(error)
+        assertTrue(error!!.contains("port", ignoreCase = true))
+    }
+
+    @Test
+    fun `validateUrl rejects SRT URL with invalid port`() {
+        val error = TransportSecurity.validateUrl("srt://host.com:99999")
+        assertNotNull(error)
+        assertTrue(error!!.contains("port", ignoreCase = true))
+    }
+
+    @Test
+    fun `validateUrl rejects SRT URL with empty host`() {
+        val error = TransportSecurity.validateUrl("srt://:9000")
+        assertNotNull(error)
+        assertTrue(error!!.contains("hostname", ignoreCase = true))
+    }
+
+    @Test
+    fun `getUnencryptedSrtWarning returns non-empty warning`() {
+        val warning = TransportSecurity.getUnencryptedSrtWarning()
+        assertTrue(warning.isNotBlank())
+        assertTrue(warning.contains("passphrase", ignoreCase = true))
+    }
 }

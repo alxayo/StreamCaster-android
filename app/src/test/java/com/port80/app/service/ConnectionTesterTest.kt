@@ -97,4 +97,41 @@ class ConnectionTesterTest {
         assertEquals("cdn.example.com", host)
         assertEquals(1935, port)
     }
+
+    // ── SRT host/port parsing ─────────────────────────────
+
+    @Test
+    fun `parseSrtHostPort extracts host and port`() {
+        val (host, port) = tester.parseSrtHostPort("srt://srt.example.com:9000")
+        assertEquals("srt.example.com", host)
+        assertEquals(9000, port)
+    }
+
+    @Test
+    fun `parseSrtHostPort extracts IP and port`() {
+        val (host, port) = tester.parseSrtHostPort("srt://192.168.1.1:4200")
+        assertEquals("192.168.1.1", host)
+        assertEquals(4200, port)
+    }
+
+    @Test
+    fun `parseSrtHostPort ignores query params`() {
+        val (host, port) = tester.parseSrtHostPort("srt://host:9000?passphrase=secret&mode=caller")
+        assertEquals("host", host)
+        assertEquals(9000, port)
+    }
+
+    @Test
+    fun `parseSrtHostPort defaults to 8888 when no port`() {
+        val (host, port) = tester.parseSrtHostPort("srt://host.com")
+        assertEquals("host.com", host)
+        assertEquals(8888, port)
+    }
+
+    @Test
+    fun `parseSrtHostPort defaults to 8888 for non-numeric port`() {
+        val (host, port) = tester.parseSrtHostPort("srt://host.com:abc")
+        assertEquals("host.com", host)
+        assertEquals(8888, port)
+    }
 }

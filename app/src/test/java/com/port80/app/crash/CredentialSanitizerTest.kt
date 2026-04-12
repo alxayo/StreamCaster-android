@@ -95,4 +95,43 @@ class CredentialSanitizerTest {
         assertFalse(result.contains("MyKey123"))
         assertFalse(result.contains("MyToken456"))
     }
+
+    // ── SRT credential sanitization ─────────────────────────
+
+    @Test
+    fun `SRT URL passphrase is sanitized`() {
+        val input = "Connecting to srt://host:9000?passphrase=secret123&mode=caller"
+        val result = CredentialSanitizer.sanitize(input)
+
+        assertFalse("Passphrase should be removed", result.contains("secret123"))
+        assertTrue("Should contain mask", result.contains("passphrase=****"))
+    }
+
+    @Test
+    fun `SRT URL streamid is sanitized`() {
+        val input = "srt://host:9000?streamid=mysecretid"
+        val result = CredentialSanitizer.sanitize(input)
+
+        assertFalse("StreamId should be removed", result.contains("mysecretid"))
+        assertTrue("Should contain mask", result.contains("streamid=****"))
+    }
+
+    @Test
+    fun `SRT URL with both passphrase and streamid sanitized`() {
+        val input = "srt://host:9000?passphrase=pass123&streamid=stream456&latency=120"
+        val result = CredentialSanitizer.sanitize(input)
+
+        assertFalse(result.contains("pass123"))
+        assertFalse(result.contains("stream456"))
+        assertTrue(result.contains("latency=120") || result.contains("latency"))
+    }
+
+    @Test
+    fun `SRT URL without sensitive params unchanged`() {
+        val input = "srt://host:9000?mode=caller&latency=120"
+        val result = CredentialSanitizer.sanitize(input)
+
+        assertTrue(result.contains("mode=caller"))
+        assertTrue(result.contains("latency=120"))
+    }
 }

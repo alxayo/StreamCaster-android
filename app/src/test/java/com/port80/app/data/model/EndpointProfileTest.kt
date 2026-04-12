@@ -14,7 +14,7 @@ class EndpointProfileTest {
         val profile = EndpointProfile(
             id = "test-id",
             name = "Test",
-            rtmpUrl = "rtmp://host/app",
+            url = "rtmp://host/app",
             streamKey = "key123"
         )
         assertNull(profile.username)
@@ -27,14 +27,14 @@ class EndpointProfileTest {
         val profile = EndpointProfile(
             id = "id-1",
             name = "YouTube",
-            rtmpUrl = "rtmps://a.rtmp.youtube.com/live2",
+            url = "rtmps://a.rtmp.youtube.com/live2",
             streamKey = "xxxx-xxxx-xxxx",
             username = "user",
             password = "pass",
             isDefault = true
         )
         assertEquals("YouTube", profile.name)
-        assertEquals("rtmps://a.rtmp.youtube.com/live2", profile.rtmpUrl)
+        assertEquals("rtmps://a.rtmp.youtube.com/live2", profile.url)
         assertEquals("xxxx-xxxx-xxxx", profile.streamKey)
         assertEquals("user", profile.username)
         assertEquals("pass", profile.password)
@@ -46,7 +46,7 @@ class EndpointProfileTest {
         val profile = EndpointProfile(
             id = "id-1",
             name = "Test",
-            rtmpUrl = "rtmp://host/app",
+            url = "rtmp://host/app",
             streamKey = "super_secret_key_12345"
         )
         // data class toString includes all fields — documents the risk
@@ -62,7 +62,7 @@ class EndpointProfileTest {
         val profile = EndpointProfile(
             id = "id-1",
             name = "Test",
-            rtmpUrl = "rtmp://host/app",
+            url = "rtmp://host/app",
             streamKey = "key",
             password = "my_secret_pass"
         )
@@ -108,17 +108,17 @@ class EndpointProfileTest {
         val profile = EndpointProfile(
             id = "550e8400-e29b-41d4-a716-446655440000",
             name = "Test",
-            rtmpUrl = "rtmp://host/app",
+            url = "rtmp://host/app",
             streamKey = "key"
         )
         assertEquals("550e8400-e29b-41d4-a716-446655440000", profile.id)
     }
 
     @Test
-    fun `rtmpUrl accepts both rtmp and rtmps schemes`() {
+    fun `url accepts both rtmp and rtmps schemes`() {
         val rtmp = EndpointProfile("1", "RTMP", "rtmp://host/app", "key")
         val rtmps = EndpointProfile("2", "RTMPS", "rtmps://host/app", "key")
-        assertTrue(rtmp.rtmpUrl.startsWith("rtmp://"))
-        assertTrue(rtmps.rtmpUrl.startsWith("rtmps://"))
+        assertTrue(rtmp.url.startsWith("rtmp://"))
+        assertTrue(rtmps.url.startsWith("rtmps://"))
     }
 }

@@ -123,4 +123,62 @@ class AbrLadderTest {
     fun `lowest rung bitrate is 500 kbps`() {
         assertEquals(500, AbrLadder.DEFAULT_LADDER.last().bitrateKbps)
     }
+
+    // ── Codec-aware ladders ─────────────────────────────
+
+    @Test
+    fun `DEFAULT_LADDER equals H264_LADDER`() {
+        assertEquals(AbrLadder.H264_LADDER, AbrLadder.DEFAULT_LADDER)
+    }
+
+    @Test
+    fun `forCodec H264 returns H264 ladder`() {
+        assertEquals(AbrLadder.H264_LADDER, AbrLadder.forCodec(com.port80.app.data.model.VideoCodec.H264))
+    }
+
+    @Test
+    fun `forCodec H265 returns H265 ladder`() {
+        assertEquals(AbrLadder.H265_LADDER, AbrLadder.forCodec(com.port80.app.data.model.VideoCodec.H265))
+    }
+
+    @Test
+    fun `forCodec AV1 returns AV1 ladder`() {
+        assertEquals(AbrLadder.AV1_LADDER, AbrLadder.forCodec(com.port80.app.data.model.VideoCodec.AV1))
+    }
+
+    @Test
+    fun `all codec ladders have 6 rungs`() {
+        assertEquals(6, AbrLadder.H264_LADDER.size)
+        assertEquals(6, AbrLadder.H265_LADDER.size)
+        assertEquals(6, AbrLadder.AV1_LADDER.size)
+    }
+
+    @Test
+    fun `H265 bitrates are lower than H264`() {
+        for (i in AbrLadder.H264_LADDER.indices) {
+            assertTrue(
+                "H265 rung $i bitrate should be lower than H264",
+                AbrLadder.H265_LADDER[i].bitrateKbps < AbrLadder.H264_LADDER[i].bitrateKbps
+            )
+        }
+    }
+
+    @Test
+    fun `AV1 bitrates are lower than H265`() {
+        for (i in AbrLadder.H265_LADDER.indices) {
+            assertTrue(
+                "AV1 rung $i bitrate should be lower than H265",
+                AbrLadder.AV1_LADDER[i].bitrateKbps < AbrLadder.H265_LADDER[i].bitrateKbps
+            )
+        }
+    }
+
+    @Test
+    fun `findClosestRung works with codec parameter`() {
+        val h265Index = AbrLadder.findClosestRung(
+            Resolution(1920, 1080), 30, com.port80.app.data.model.VideoCodec.H265
+        )
+        assertEquals(0, h265Index)
+        assertEquals(3000, AbrLadder.H265_LADDER[h265Index].bitrateKbps)
+    }
 }

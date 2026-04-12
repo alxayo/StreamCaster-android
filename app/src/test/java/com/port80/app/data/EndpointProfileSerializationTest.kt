@@ -15,7 +15,7 @@ class EndpointProfileSerializationTest {
     private val fullProfile = EndpointProfile(
         id = "uuid-123",
         name = "My YouTube",
-        rtmpUrl = "rtmp://ingest.youtube.com/live",
+        url = "rtmp://ingest.youtube.com/live",
         streamKey = "abc-secret-key",
         username = "user@example.com",
         password = "s3cret!",
@@ -25,7 +25,7 @@ class EndpointProfileSerializationTest {
     private val minimalProfile = EndpointProfile(
         id = "uuid-456",
         name = "Twitch",
-        rtmpUrl = "rtmps://live.twitch.tv/app",
+        url = "rtmps://live.twitch.tv/app",
         streamKey = "live_key_123"
     )
 
@@ -36,7 +36,7 @@ class EndpointProfileSerializationTest {
 
         assertEquals(fullProfile.id, restored.id)
         assertEquals(fullProfile.name, restored.name)
-        assertEquals(fullProfile.rtmpUrl, restored.rtmpUrl)
+        assertEquals(fullProfile.url, restored.url)
         assertEquals(fullProfile.streamKey, restored.streamKey)
         assertEquals(fullProfile.username, restored.username)
         assertEquals(fullProfile.password, restored.password)
@@ -51,7 +51,7 @@ class EndpointProfileSerializationTest {
 
         assertEquals(minimalProfile.id, restored.id)
         assertEquals(minimalProfile.name, restored.name)
-        assertEquals(minimalProfile.rtmpUrl, restored.rtmpUrl)
+        assertEquals(minimalProfile.url, restored.url)
         assertEquals(minimalProfile.streamKey, restored.streamKey)
         assertNull(restored.username)
         assertNull(restored.password)
@@ -63,7 +63,7 @@ class EndpointProfileSerializationTest {
 
         assertEquals("uuid-123", map["id"])
         assertEquals("My YouTube", map["name"])
-        assertEquals("rtmp://ingest.youtube.com/live", map["rtmpUrl"])
+        assertEquals("rtmp://ingest.youtube.com/live", map["url"])
         assertEquals("abc-secret-key", map["streamKey"])
         assertEquals("user@example.com", map["username"])
         assertEquals("s3cret!", map["password"])
@@ -80,7 +80,7 @@ class EndpointProfileSerializationTest {
         val map = mapOf<String, Any?>(
             "id" to "uuid-789",
             "name" to "Custom",
-            "rtmpUrl" to "rtmp://custom.server/live",
+            "url" to "rtmp://custom.server/live",
             "streamKey" to "key-789"
         )
 
@@ -96,7 +96,7 @@ class EndpointProfileSerializationTest {
         val map = mapOf<String, Any?>(
             "id" to "uuid-abc",
             "name" to "Explicit Nulls",
-            "rtmpUrl" to "rtmp://test.server/live",
+            "url" to "rtmp://test.server/live",
             "streamKey" to "key-abc",
             "username" to null,
             "password" to null
