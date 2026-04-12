@@ -1,5 +1,6 @@
 package com.port80.app.service
 
+import com.port80.app.data.model.VideoCodec
 import com.port80.app.util.RedactingLogger
 
 /**
@@ -14,10 +15,11 @@ import com.port80.app.util.RedactingLogger
  * - 5 consecutive good samples → step up (more conservative to prevent oscillation)
  */
 class AbrPolicy(
-    private val ladder: List<AbrRung> = AbrLadder.DEFAULT_LADDER,
-    private val stepDownThreshold: Int = 3,   // Bad samples before stepping down
-    private val stepUpThreshold: Int = 5,     // Good samples before stepping up
-    private val maxDroppedFrameRatio: Float = 0.1f  // 10% dropped = congestion
+    codec: VideoCodec = VideoCodec.H264,
+    private val ladder: List<AbrRung> = AbrLadder.forCodec(codec),
+    private val stepDownThreshold: Int = 3,
+    private val stepUpThreshold: Int = 5,
+    private val maxDroppedFrameRatio: Float = 0.1f
 ) {
     companion object {
         private const val TAG = "AbrPolicy"
