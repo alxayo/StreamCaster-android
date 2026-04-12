@@ -135,9 +135,17 @@ fun StreamScreen(
                 .fillMaxSize()
                 .padding(contentPadding)
         ) {
-            if (isMinimalMode && isActiveStream) {
-                // Minimal power-saving overlay — preview is removed from
-                // composition, triggering surfaceDestroyed() automatically.
+            // Camera preview is ALWAYS in the composition tree to keep the
+            // SurfaceHolder alive. Removing it would trigger surfaceDestroyed()
+            // which stops the RootEncoder camera capture and kills the stream.
+            val showMinimal = isMinimalMode && isActiveStream
+            CameraPreview(
+                modifier = if (showMinimal) Modifier.size(1.dp) else Modifier.fillMaxSize(),
+                onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
+                onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
+            )
+
+            if (showMinimal) {
                 MinimalStreamingOverlay(
                     stats = streamStats,
                     isMuted = (streamState as? StreamState.Live)?.isMuted == true,
@@ -146,13 +154,6 @@ fun StreamScreen(
                     onExitMinimalMode = { viewModel.exitMinimalMode() }
                 )
             } else {
-                // Layer 1: Camera preview (full-screen background)
-                CameraPreview(
-                    modifier = Modifier.fillMaxSize(),
-                    onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
-                    onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
-                )
-
                 // Layer 2: HUD overlay at the top (only visible when live or reconnecting)
                 if (streamState is StreamState.Live || streamState is StreamState.Reconnecting) {
                     StreamHud(
