@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.pedro.common.ConnectChecker
 import com.pedro.library.view.OpenGlView
@@ -79,6 +80,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     // -- Surface management --
     private var currentSurface: OpenGlView? = null
+
+    // -- CPU wake lock: keeps the CPU running while streaming in background --
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // -- Binder for Activity/ViewModel to communicate with this service --
     inner class LocalBinder : Binder() {
@@ -208,6 +212,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     /** Clean up all streaming resources. */
     private fun cleanupAndStop() {
+        releaseWakeLock()
         try {
             encoderBridge?.disconnect()
             encoderBridge?.release()
@@ -215,6 +220,29 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Error during cleanup", e)
         }
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "StreamCaster::Streaming")
+        }
+        wakeLock?.let {
+            if (!it.isHeld) {
+                it.acquire(4 * 60 * 60 * 1000L) // 4-hour safety timeout
+                RedactingLogger.d(TAG, "Wake lock acquired")
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                RedactingLogger.d(TAG, "Wake lock released")
+            }
+        }
+        wakeLock = null
     }
 
     private suspend fun startStreamInternal(profileId: String) {
@@ -245,6 +273,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             val encoderConfig = buildEncoderConfig(profile)
 
             RedactingLogger.d(TAG, "startStream(): invoking encoderBridge.connect()")
+            acquireWakeLock()
             encoderBridge?.connect(connectionParams, encoderConfig)
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Failed to start stream", e)
