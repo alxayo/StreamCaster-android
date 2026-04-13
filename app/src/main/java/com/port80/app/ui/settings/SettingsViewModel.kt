@@ -6,6 +6,7 @@ import com.port80.app.camera.DeviceCapabilityQuery
 import com.port80.app.data.SettingsRepository
 import com.port80.app.data.model.CameraInfo
 import com.port80.app.data.model.Resolution
+import com.port80.app.data.model.StabilizationMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -82,6 +83,9 @@ class SettingsViewModel @Inject constructor(
     val localRecordingEnabled: StateFlow<Boolean> = settingsRepository.getLocalRecordingEnabled()
         .stateIn(viewModelScope, subscriptionPolicy, false)
 
+    val stabilizationMode: StateFlow<StabilizationMode> = settingsRepository.getStabilizationMode()
+        .stateIn(viewModelScope, subscriptionPolicy, StabilizationMode.OFF)
+
     // ── Screen settings ─────────────────────────────────────────────
 
     val keepScreenOn: StateFlow<Boolean> = settingsRepository.getKeepScreenOn()
@@ -117,6 +121,10 @@ class SettingsViewModel @Inject constructor(
 
     /** All cameras available on this device, with labels and metadata. */
     val availableCameras: List<CameraInfo> by lazy { deviceCapabilityQuery.getAvailableCameras() }
+
+    /** Stabilization modes supported by a given camera. */
+    fun getSupportedStabilizationModes(cameraId: String): Set<StabilizationMode> =
+        deviceCapabilityQuery.getSupportedStabilizationModes(cameraId)
 
     // ── Update methods ──────────────────────────────────────────────
     // Each launches a coroutine scoped to the ViewModel so it survives
@@ -177,6 +185,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setLocalRecordingEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setLocalRecordingEnabled(enabled) }
+    }
+
+    fun setStabilizationMode(mode: StabilizationMode) {
+        viewModelScope.launch { settingsRepository.setStabilizationMode(mode) }
     }
 
     fun setKeepScreenOn(enabled: Boolean) {

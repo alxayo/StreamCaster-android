@@ -1,6 +1,7 @@
 package com.port80.app.service
 
 import com.pedro.library.view.OpenGlView
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,19 @@ interface StreamingServiceControl {
     fun startStream(profileId: String)
 
     /**
+     * Start camera preview without streaming.
+     * Creates a preview bridge and opens the camera so the user can frame the shot.
+     * No-op if not Idle.
+     */
+    fun startPreviewOnly()
+
+    /**
+     * Stop the preview-only session.
+     * Releases the camera and bridge. No-op if not in Previewing state.
+     */
+    fun stopPreviewOnly()
+
+    /**
      * Stop the active stream and cancel any reconnect attempts.
      * No-op if already stopped or idle.
      */
@@ -61,4 +75,10 @@ interface StreamingServiceControl {
      * Streaming continues without preview — only the display stops.
      */
     fun detachPreviewSurface()
+
+    /**
+     * Set image stabilization mode. Applied to the active camera session.
+     * Safe to call during preview or streaming.
+     */
+    fun setStabilizationMode(mode: StabilizationMode)
 }

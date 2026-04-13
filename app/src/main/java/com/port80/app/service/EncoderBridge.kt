@@ -2,6 +2,7 @@ package com.port80.app.service
 
 import android.content.Context
 import com.pedro.library.view.OpenGlView
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.StreamProtocol
 
 /**
@@ -53,6 +54,13 @@ interface EncoderBridge {
 
     /** Change video bitrate on the fly without restarting the encoder. */
     fun setVideoBitrateOnFly(bitrateKbps: Int)
+
+    /**
+     * Set the image stabilization mode.
+     * Only one mode (EIS or OIS) should be active at a time.
+     * Safe to call during preview or streaming.
+     */
+    fun setStabilizationMode(mode: StabilizationMode)
 
     /** Release all encoder and camera resources. Call this on service destroy. */
     fun release()

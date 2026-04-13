@@ -5,12 +5,19 @@ package com.port80.app.data.model
  * The UI layer observes this as a read-only StateFlow — it never modifies it directly.
  *
  * The state machine follows this flow:
- *   Idle → Connecting → Live → Stopping → Stopped
- *                     ↘ Reconnecting ↗
+ *   Idle → Previewing → Connecting → Live → Stopping → Stopped
+ *                                  ↘ Reconnecting ↗
  */
 sealed class StreamState {
     /** No stream active. Ready to start. */
     data object Idle : StreamState()
+
+    /**
+     * Camera preview is active but not streaming.
+     * The user can frame the shot and switch cameras before going live.
+     * @param cameraId the Camera2 camera ID currently being previewed
+     */
+    data class Previewing(val cameraId: String) : StreamState()
 
     /** RTMP handshake in progress — waiting for server to accept connection. */
     data object Connecting : StreamState()

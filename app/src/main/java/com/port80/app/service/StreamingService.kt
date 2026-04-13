@@ -15,6 +15,7 @@ import com.port80.app.camera.DeviceCapabilityQuery
 import com.port80.app.crash.CredentialSanitizer
 import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.StreamProtocol
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
@@ -48,8 +49,8 @@ import javax.inject.Inject
  * 4. On stop: disconnects, releases resources, stops self
  *
  * State machine:
- *   Idle -> Connecting -> Live -> Stopping -> Stopped
- *                      \-> Reconnecting -/
+ *   Idle -> Previewing -> Connecting -> Live -> Stopping -> Stopped
+ *                                    \-> Reconnecting -/
  */
 @AndroidEntryPoint
 class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
@@ -87,6 +88,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     // -- Camera switcher: created per-session with available cameras --
     private var cameraSwitcher: CameraSwitcher? = null
+
+    // -- Stabilization: tracks the active mode for carry-forward on bridge swap --
+    private var activeStabilizationMode: StabilizationMode = StabilizationMode.OFF
 
     // -- CPU wake lock: keeps the CPU running while streaming in background --
     private var wakeLock: PowerManager.WakeLock? = null
@@ -148,9 +152,12 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     // ==========================================================
 
     override fun startStream(profileId: String) {
-        // Idempotent: only start if we're idle or stopped
+        // Idempotent: only start if we're idle, previewing, or stopped
         val currentState = _streamState.value
-        if (currentState != StreamState.Idle && currentState !is StreamState.Stopped) {
+        if (currentState != StreamState.Idle &&
+            currentState !is StreamState.Previewing &&
+            currentState !is StreamState.Stopped
+        ) {
             RedactingLogger.d(TAG, "startStream ignored - already in state: $currentState")
             return
         }
@@ -164,10 +171,16 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     }
 
     override fun stopStream() {
-        // Idempotent: only stop if we're actually streaming or connecting
+        // Idempotent: only stop if we're actually streaming, connecting, or previewing
         val currentState = _streamState.value
         if (currentState == StreamState.Idle || currentState is StreamState.Stopped) {
             RedactingLogger.d(TAG, "stopStream ignored - already in state: $currentState")
+            return
+        }
+
+        // If only previewing, just stop preview
+        if (currentState is StreamState.Previewing) {
+            stopPreviewOnly()
             return
         }
 
@@ -196,17 +209,86 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         }
     }
 
+    override fun startPreviewOnly() {
+        val currentState = _streamState.value
+        if (currentState != StreamState.Idle && currentState !is StreamState.Stopped) {
+            RedactingLogger.d(TAG, "startPreviewOnly ignored - already in state: $currentState")
+            return
+        }
+
+        val surface = currentSurface
+        if (surface == null) {
+            RedactingLogger.w(TAG, "startPreviewOnly: no surface attached yet, deferring")
+            return
+        }
+
+        serviceScope.launch {
+            try {
+                val cameraId = resolveDefaultCameraId()
+                val stabMode = settingsRepository.getStabilizationMode().first()
+
+                // Create an RTMP bridge for preview (identical Camera2Base preview behavior)
+                encoderBridge?.release()
+                encoderBridge = RtmpCamera2Bridge(this@StreamingService)
+
+                val bridge = encoderBridge ?: return@launch
+                val availableCameras = deviceCapabilityQuery.getAvailableCameras()
+                cameraSwitcher = CameraSwitcher(bridge, availableCameras).apply {
+                    setInitialCamera(cameraId)
+                }
+
+                bridge.startPreview(surface, cameraId)
+                applyStabilizationMode(stabMode, cameraId)
+
+                _streamState.value = StreamState.Previewing(cameraId)
+                RedactingLogger.i(TAG, "Preview started with camera $cameraId, stabilization=$stabMode")
+            } catch (e: Exception) {
+                RedactingLogger.e(TAG, "Failed to start preview", e)
+            }
+        }
+    }
+
+    override fun stopPreviewOnly() {
+        val currentState = _streamState.value
+        if (currentState !is StreamState.Previewing) {
+            RedactingLogger.d(TAG, "stopPreviewOnly ignored - not previewing: $currentState")
+            return
+        }
+
+        RedactingLogger.d(TAG, "Stopping preview-only session")
+        encoderBridge?.stopPreview()
+        encoderBridge?.release()
+        encoderBridge = null
+        cameraSwitcher = null
+        activeStabilizationMode = StabilizationMode.OFF
+        _streamState.value = StreamState.Idle
+    }
+
     override fun switchCamera() {
-        if (_streamState.value is StreamState.Live) {
+        val state = _streamState.value
+        if (state is StreamState.Live || state is StreamState.Previewing) {
             cameraSwitcher?.switchCamera() ?: encoderBridge?.switchCamera()
+            updatePreviewingCameraId()
+            revalidateStabilizationAfterSwitch()
             RedactingLogger.d(TAG, "Camera switched")
         }
     }
 
     override fun switchCamera(cameraId: String) {
-        if (_streamState.value is StreamState.Live) {
+        val state = _streamState.value
+        if (state is StreamState.Live || state is StreamState.Previewing) {
             cameraSwitcher?.switchToCamera(cameraId) ?: encoderBridge?.switchCamera(cameraId)
+            updatePreviewingCameraId()
+            revalidateStabilizationAfterSwitch()
             RedactingLogger.d(TAG, "Camera switched to $cameraId")
+        }
+    }
+
+    override fun setStabilizationMode(mode: StabilizationMode) {
+        val state = _streamState.value
+        if (state is StreamState.Previewing || state is StreamState.Live) {
+            val currentCameraId = cameraSwitcher?.currentCameraId ?: return
+            applyStabilizationMode(mode, currentCameraId)
         }
     }
 
@@ -219,6 +301,10 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             // Hot-swap the surface back while keeping the stream alive
             encoderBridge?.replaceView(openGlView)
             RedactingLogger.d(TAG, "Preview surface re-attached via replaceView (stream active)")
+        } else if (state is StreamState.Previewing) {
+            // Re-attach during preview-only mode
+            encoderBridge?.replaceView(openGlView)
+            RedactingLogger.d(TAG, "Preview surface re-attached via replaceView (preview active)")
         } else {
             RedactingLogger.d(TAG, "Preview surface attached (stream not active)")
         }
@@ -233,6 +319,10 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             // Switch to headless background mode — camera keeps capturing
             encoderBridge?.replaceViewWithBackground(this)
             RedactingLogger.d(TAG, "Preview surface detached — switched to background mode (stream active)")
+        } else if (state is StreamState.Previewing) {
+            // In preview-only mode, stop the preview entirely
+            stopPreviewOnly()
+            RedactingLogger.d(TAG, "Preview surface detached — stopped preview (preview-only mode)")
         } else {
             encoderBridge?.stopPreview()
             RedactingLogger.d(TAG, "Preview surface detached — stopped preview (stream not active)")
@@ -248,6 +338,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         stopStatsTicker()
         releaseWakeLock()
         cameraSwitcher = null
+        activeStabilizationMode = StabilizationMode.OFF
         try {
             encoderBridge?.disconnect()
             encoderBridge?.release()
@@ -315,11 +406,30 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                 return
             }
 
-            // Create per-session bridge for the correct protocol
-            encoderBridge?.release()
-            encoderBridge = encoderBridgeFactory.create(this, protocol)
+            val hasPreviewBridge = encoderBridge != null
+            val needsSrtBridge = protocol == StreamProtocol.SRT
 
-            ensurePreview()
+            if (hasPreviewBridge && !needsSrtBridge) {
+                // Reuse preview bridge for RTMP/RTMPS — camera already open
+                RedactingLogger.d(TAG, "Reusing preview bridge for RTMP stream")
+            } else if (hasPreviewBridge && needsSrtBridge) {
+                // Preview was on RTMP bridge; SRT needs a different bridge class.
+                // Carry forward the current camera ID and stabilization mode.
+                val currentCameraId = cameraSwitcher?.currentCameraId
+                val currentStab = activeStabilizationMode
+                encoderBridge?.release()
+                encoderBridge = encoderBridgeFactory.create(this, protocol)
+                ensurePreview(overrideCameraId = currentCameraId)
+                applyStabilizationMode(currentStab, currentCameraId ?: resolveDefaultCameraId())
+                RedactingLogger.d(TAG, "Recreated bridge for SRT (camera=$currentCameraId, stab=$currentStab)")
+            } else {
+                // No preview was running — create bridge from scratch
+                encoderBridge?.release()
+                encoderBridge = encoderBridgeFactory.create(this, protocol)
+                ensurePreview()
+                val stabMode = settingsRepository.getStabilizationMode().first()
+                applyStabilizationMode(stabMode, cameraSwitcher?.currentCameraId ?: resolveDefaultCameraId())
+            }
 
             val connectionParams = buildConnectionParams(profile, protocol)
             val encoderConfig = buildEncoderConfig(profile)
@@ -389,25 +499,54 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         )
     }
 
-    private suspend fun ensurePreview() {
+    private suspend fun ensurePreview(overrideCameraId: String? = null) {
         val surface = currentSurface
-        val defaultCameraId = resolveDefaultCameraId()
+        val cameraId = overrideCameraId ?: resolveDefaultCameraId()
 
         // Create camera switcher with the available cameras list
         val bridge = encoderBridge
         if (bridge != null) {
             val availableCameras = deviceCapabilityQuery.getAvailableCameras()
             cameraSwitcher = CameraSwitcher(bridge, availableCameras).apply {
-                setInitialCamera(defaultCameraId)
+                setInitialCamera(cameraId)
             }
         }
 
         if (surface == null) {
             RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
         } else {
-            RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview with camera $defaultCameraId")
-            encoderBridge?.startPreview(surface, defaultCameraId)
+            RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview with camera $cameraId")
+            encoderBridge?.startPreview(surface, cameraId)
         }
+    }
+
+    /**
+     * Apply the given stabilization mode if the current camera supports it.
+     * Falls back to OFF if the mode isn't supported.
+     */
+    private fun applyStabilizationMode(mode: StabilizationMode, cameraId: String) {
+        val supportedModes = deviceCapabilityQuery.getSupportedStabilizationModes(cameraId)
+        val effectiveMode = if (mode in supportedModes) mode else StabilizationMode.OFF
+        activeStabilizationMode = effectiveMode
+        encoderBridge?.setStabilizationMode(effectiveMode)
+        if (effectiveMode != mode) {
+            RedactingLogger.w(TAG, "Stabilization $mode not supported on camera $cameraId, using $effectiveMode")
+        }
+    }
+
+    /** Update the Previewing state's cameraId after a camera switch. */
+    private fun updatePreviewingCameraId() {
+        val state = _streamState.value
+        if (state is StreamState.Previewing) {
+            val newId = cameraSwitcher?.currentCameraId ?: return
+            _streamState.value = StreamState.Previewing(newId)
+        }
+    }
+
+    /** After camera switch, re-validate that the active stabilization mode is still supported. */
+    private fun revalidateStabilizationAfterSwitch() {
+        val currentCameraId = cameraSwitcher?.currentCameraId ?: return
+        applyStabilizationMode(activeStabilizationMode, currentCameraId)
     }
 
     /**

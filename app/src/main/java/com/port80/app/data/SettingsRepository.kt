@@ -1,6 +1,7 @@
 package com.port80.app.data
 
 import com.port80.app.data.model.Resolution
+import com.port80.app.data.model.StabilizationMode
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -59,4 +60,8 @@ interface SettingsRepository {
     // ── Screen settings ──
     fun getKeepScreenOn(): Flow<Boolean>
     suspend fun setKeepScreenOn(enabled: Boolean)
+
+    // ── Stabilization settings ──
+    fun getStabilizationMode(): Flow<StabilizationMode>
+    suspend fun setStabilizationMode(mode: StabilizationMode)
 }

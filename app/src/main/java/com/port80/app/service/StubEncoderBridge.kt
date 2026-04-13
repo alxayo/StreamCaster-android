@@ -1,6 +1,7 @@
 package com.port80.app.service
 
 import android.content.Context
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.util.RedactingLogger
 import com.pedro.library.view.OpenGlView
 
@@ -16,6 +17,10 @@ class StubEncoderBridge : EncoderBridge {
 
     /** Last camera ID passed to [switchCamera] or [startPreview], for test assertions. */
     var lastCameraId: String? = null
+        private set
+
+    /** Last stabilization mode set via [setStabilizationMode], for test assertions. */
+    var lastStabilizationMode: StabilizationMode? = null
         private set
 
     override fun startPreview(openGlView: OpenGlView) {
@@ -60,6 +65,11 @@ class StubEncoderBridge : EncoderBridge {
 
     override fun setVideoBitrateOnFly(bitrateKbps: Int) {
         RedactingLogger.d(TAG, "setVideoBitrateOnFly($bitrateKbps kbps)")
+    }
+
+    override fun setStabilizationMode(mode: StabilizationMode) {
+        RedactingLogger.d(TAG, "setStabilizationMode($mode)")
+        lastStabilizationMode = mode
     }
 
     override fun release() {

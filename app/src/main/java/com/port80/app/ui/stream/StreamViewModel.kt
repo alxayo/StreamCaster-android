@@ -15,6 +15,7 @@ import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
 import com.port80.app.camera.DeviceCapabilityQuery
 import com.port80.app.data.model.CameraInfo
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
 import com.port80.app.data.model.StopReason
@@ -114,6 +115,14 @@ class StreamViewModel @Inject constructor(
     /** Whether the device has more than one rear camera (multi-camera). */
     val hasMultipleRearCameras: Boolean by lazy { deviceCapabilityQuery.getRearCameras().size > 1 }
 
+    // ── Stabilization ────────────────────────────
+
+    /** Supported stabilization modes for the current default camera. */
+    val supportedStabilizationModes: Set<StabilizationMode> by lazy {
+        val defaultId = availableCameras.firstOrNull()?.id ?: "0"
+        deviceCapabilityQuery.getSupportedStabilizationModes(defaultId)
+    }
+
     // ── Minimal mode ─────────────────────────────
 
     private val _isMinimalMode = MutableStateFlow(false)
@@ -173,6 +182,11 @@ class StreamViewModel @Inject constructor(
                 //    service is already Live and needs the new surface
                 surfaceRef?.get()?.let { openGlView ->
                     service.attachPreviewSurface(openGlView)
+                    // Auto-start preview if service is idle
+                    val serviceState = service.streamState.value
+                    if (serviceState == StreamState.Idle || serviceState is StreamState.Stopped) {
+                        service.startPreviewOnly()
+                    }
                 }
             }
         }
@@ -313,6 +327,13 @@ class StreamViewModel @Inject constructor(
 
         // If already bound to the service, attach immediately.
         serviceControl?.attachPreviewSurface(openGlView)
+
+        // Auto-start preview if camera permission is granted and we're idle
+        val state = _streamState.value
+        if (state == StreamState.Idle || state is StreamState.Stopped) {
+            serviceControl?.startPreviewOnly()
+        }
+
         RedactingLogger.d(TAG, "Surface ready — preview attached")
     }
 
@@ -325,7 +346,15 @@ class StreamViewModel @Inject constructor(
      */
     fun onSurfaceDestroyed() {
         surfaceRef = null
-        serviceControl?.detachPreviewSurface()
+        val state = _streamState.value
+
+        if (state is StreamState.Previewing) {
+            // In preview-only mode, stop the entire preview
+            serviceControl?.stopPreviewOnly()
+        } else {
+            // During streaming, just detach the surface (stream continues)
+            serviceControl?.detachPreviewSurface()
+        }
 
         // Reset the deferred so the next surfaceCreated() can complete it
         // again. CompletableDeferred is single-use — once completed, a new
@@ -376,7 +405,9 @@ class StreamViewModel @Inject constructor(
             // Auto-reset minimal mode when stream stops
             launch {
                 service.streamState.collect { state ->
-                    if (state is StreamState.Idle || state is StreamState.Stopped) {
+                    if (state is StreamState.Idle || state is StreamState.Stopped ||
+                        state is StreamState.Previewing
+                    ) {
                         _isMinimalMode.value = false
                     }
                 }
@@ -400,6 +431,12 @@ class StreamViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         stopServiceCollectors()
+
+        // Stop preview if we were in preview-only mode
+        if (_streamState.value is StreamState.Previewing) {
+            serviceControl?.stopPreviewOnly()
+        }
+
         if (isBound) {
             try {
                 getApplication<Application>().unbindService(serviceConnection)

@@ -2,6 +2,7 @@ package com.port80.app.camera
 
 import com.port80.app.data.model.CameraInfo
 import com.port80.app.data.model.Resolution
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.VideoCodec
 
 /**
@@ -44,4 +45,11 @@ interface DeviceCapabilityQuery {
 
     /** Get list of video codecs that have hardware encoder support on this device. */
     fun getSupportedVideoCodecs(): List<VideoCodec>
+
+    /**
+     * Get the set of image stabilization modes supported by a specific camera.
+     * Always includes [StabilizationMode.OFF]. May include EIS and/or OIS
+     * depending on hardware capabilities.
+     */
+    fun getSupportedStabilizationModes(cameraId: String): Set<StabilizationMode>
 }

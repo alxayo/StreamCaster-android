@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.port80.app.data.model.CameraInfo
+import com.port80.app.data.model.StabilizationMode
 import kotlin.math.roundToInt
 
 /**
@@ -57,6 +58,7 @@ fun GeneralSettingsScreen(
     val criticalBattery by viewModel.criticalBatteryThreshold.collectAsState()
     val recordingEnabled by viewModel.localRecordingEnabled.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
+    val stabilizationMode by viewModel.stabilizationMode.collectAsState()
 
     val hasFront = viewModel.hasFrontCamera
     val hasBack = viewModel.hasBackCamera
@@ -110,6 +112,12 @@ fun GeneralSettingsScreen(
                 selectedId = defaultCameraId,
                 availableCameras = availableCameras,
                 onSelected = { viewModel.setDefaultCameraId(it) }
+            )
+
+            StabilizationPicker(
+                selectedMode = stabilizationMode,
+                supportedModes = viewModel.getSupportedStabilizationModes(defaultCameraId),
+                onSelected = { viewModel.setStabilizationMode(it) }
             )
 
             // ── Orientation ─────────────────────────────────────────
@@ -334,5 +342,70 @@ private fun BatteryThresholdSlider(
     SliderLabels(
         left = "$minPercent%",
         right = "$maxPercent%"
+    )
+}
+
+/** Dropdown picker for image stabilization mode. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StabilizationPicker(
+    selectedMode: StabilizationMode,
+    supportedModes: Set<StabilizationMode>,
+    onSelected: (StabilizationMode) -> Unit
+) {
+    // Always include OFF; filter others by device support
+    val options = listOf(
+        StabilizationMode.OFF to "Off",
+        StabilizationMode.EIS to "Electronic (EIS)",
+        StabilizationMode.OIS to "Optical (OIS)"
+    ).filter { it.first in supportedModes }
+
+    // If only OFF is supported, show a non-interactive label
+    if (options.size <= 1) {
+        ListItem(
+            headlineContent = { Text("Image Stabilization") },
+            supportingContent = { Text("Not supported by this camera") }
+        )
+        return
+    }
+
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLabel = options.firstOrNull { it.first == selectedMode }?.second ?: "Off"
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = selectedLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Image Stabilization") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { (mode, label) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        onSelected(mode)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+    Text(
+        text = "EIS uses digital processing; OIS uses physical lens movement for smoother results",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp)
     )
 }

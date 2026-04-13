@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.port80.app.data.model.Resolution
+import com.port80.app.data.model.StabilizationMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -47,6 +48,9 @@ class DataStoreSettingsRepository @Inject constructor(
         // Screen
         val KEY_KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
 
+        // Stabilization
+        val KEY_STABILIZATION_MODE = stringPreferencesKey("stabilization_mode")
+
         // Defaults
         const val DEFAULT_RESOLUTION_WIDTH = 1280
         const val DEFAULT_RESOLUTION_HEIGHT = 720
@@ -64,6 +68,7 @@ class DataStoreSettingsRepository @Inject constructor(
         const val DEFAULT_CRITICAL_BATTERY_THRESHOLD = 2
         const val DEFAULT_LOCAL_RECORDING_ENABLED = false
         const val DEFAULT_KEEP_SCREEN_ON = true
+        const val DEFAULT_STABILIZATION_MODE = "OFF"
     }
 
     // ── Video settings ──
@@ -202,5 +207,20 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setKeepScreenOn(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_KEEP_SCREEN_ON] = enabled }
+    }
+
+    // ── Stabilization settings ──
+
+    override fun getStabilizationMode(): Flow<StabilizationMode> = dataStore.data.map { prefs ->
+        val name = prefs[KEY_STABILIZATION_MODE] ?: DEFAULT_STABILIZATION_MODE
+        try {
+            StabilizationMode.valueOf(name)
+        } catch (_: IllegalArgumentException) {
+            StabilizationMode.OFF
+        }
+    }
+
+    override suspend fun setStabilizationMode(mode: StabilizationMode) {
+        dataStore.edit { prefs -> prefs[KEY_STABILIZATION_MODE] = mode.name }
     }
 }

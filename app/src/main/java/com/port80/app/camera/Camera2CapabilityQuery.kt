@@ -12,6 +12,7 @@ import android.util.Size
 import com.port80.app.data.model.CameraFacing
 import com.port80.app.data.model.CameraInfo
 import com.port80.app.data.model.Resolution
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.VideoCodec
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -159,6 +160,25 @@ class Camera2CapabilityQuery @Inject constructor(
         return VideoCodec.entries.filter { codec ->
             findEncoderCapabilities(codec) != null
         }
+    }
+
+    override fun getSupportedStabilizationModes(cameraId: String): Set<StabilizationMode> {
+        val modes = mutableSetOf(StabilizationMode.OFF)
+        val chars = getCameraCharacteristicsSafe(cameraId) ?: return modes
+
+        // Check EIS: CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES contains ON (1)
+        val videoStabModes = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)
+        if (videoStabModes != null && videoStabModes.contains(CameraCharacteristics.CONTROL_VIDEO_STABILIZATION_MODE_ON)) {
+            modes.add(StabilizationMode.EIS)
+        }
+
+        // Check OIS: LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION contains ON (1)
+        val oisModes = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+        if (oisModes != null && oisModes.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON)) {
+            modes.add(StabilizationMode.OIS)
+        }
+
+        return modes
     }
 
     // -----------------------------------------------------------------------

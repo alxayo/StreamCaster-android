@@ -6,6 +6,7 @@ import com.pedro.common.VideoCodec as RootEncoderVideoCodec
 import com.pedro.library.srt.SrtCamera2
 import com.pedro.library.view.OpenGlView
 import com.port80.app.data.model.SrtMode
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.VideoCodec
 import com.port80.app.util.RedactingLogger
 
@@ -183,6 +184,29 @@ class SrtCamera2Bridge(
         val bitrateBps = bitrateKbps * 1000
         RedactingLogger.d(TAG, "setVideoBitrateOnFly(${bitrateKbps} kbps → $bitrateBps bps)")
         srtCamera2?.setVideoBitrateOnFly(bitrateBps)
+    }
+
+    override fun setStabilizationMode(mode: StabilizationMode) {
+        RedactingLogger.d(TAG, "setStabilizationMode($mode)")
+        val camera = srtCamera2 ?: return
+        try {
+            when (mode) {
+                StabilizationMode.OFF -> {
+                    camera.disableVideoStabilization()
+                    camera.disableOpticalVideoStabilization()
+                }
+                StabilizationMode.EIS -> {
+                    camera.disableOpticalVideoStabilization()
+                    camera.enableVideoStabilization()
+                }
+                StabilizationMode.OIS -> {
+                    camera.disableVideoStabilization()
+                    camera.enableOpticalVideoStabilization()
+                }
+            }
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "Failed to set stabilization mode $mode", e)
+        }
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import com.pedro.common.ConnectChecker
 import com.pedro.common.VideoCodec as RootEncoderVideoCodec
 import com.pedro.library.rtmp.RtmpCamera2
 import com.pedro.library.view.OpenGlView
+import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.VideoCodec
 import com.port80.app.util.RedactingLogger
 
@@ -182,6 +183,29 @@ class RtmpCamera2Bridge(
         val bitrateBps = bitrateKbps * 1000
         RedactingLogger.d(TAG, "setVideoBitrateOnFly(${bitrateKbps} kbps → $bitrateBps bps)")
         rtmpCamera2?.setVideoBitrateOnFly(bitrateBps)
+    }
+
+    override fun setStabilizationMode(mode: StabilizationMode) {
+        RedactingLogger.d(TAG, "setStabilizationMode($mode)")
+        val camera = rtmpCamera2 ?: return
+        try {
+            when (mode) {
+                StabilizationMode.OFF -> {
+                    camera.disableVideoStabilization()
+                    camera.disableOpticalVideoStabilization()
+                }
+                StabilizationMode.EIS -> {
+                    camera.disableOpticalVideoStabilization()
+                    camera.enableVideoStabilization()
+                }
+                StabilizationMode.OIS -> {
+                    camera.disableVideoStabilization()
+                    camera.enableOpticalVideoStabilization()
+                }
+            }
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "Failed to set stabilization mode $mode", e)
+        }
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────

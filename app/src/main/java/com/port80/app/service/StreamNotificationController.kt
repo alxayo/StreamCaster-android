@@ -58,7 +58,7 @@ class StreamNotificationController @Inject constructor(
             .setSilent(true)
 
         when (state) {
-            is StreamState.Idle -> {
+            is StreamState.Idle, is StreamState.Previewing -> {
                 builder.setContentTitle("StreamCaster")
                     .setContentText("Ready to stream")
             }

@@ -50,8 +50,10 @@ import com.port80.app.data.model.CameraInfo
 import com.port80.app.data.model.StopReason
 import com.port80.app.data.model.StreamState
 import com.port80.app.ui.components.CameraPreview
+import com.port80.app.ui.components.CameraPreviewPlaceholder
 import com.port80.app.ui.components.MinimalStreamingOverlay
 import com.port80.app.ui.components.PermissionHandler
+import com.port80.app.ui.components.PreviewPermissionGate
 import com.port80.app.ui.components.StreamHud
 import kotlinx.coroutines.flow.collectLatest
 
@@ -144,10 +146,21 @@ fun StreamScreen(
             // SurfaceHolder alive. Removing it would trigger surfaceDestroyed()
             // which stops the RootEncoder camera capture and kills the stream.
             val showMinimal = isMinimalMode && isActiveStream
-            CameraPreview(
-                modifier = if (showMinimal) Modifier.size(1.dp) else Modifier.fillMaxSize(),
-                onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
-                onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
+            PreviewPermissionGate(
+                onGranted = {
+                    CameraPreview(
+                        modifier = if (showMinimal) Modifier.size(1.dp) else Modifier.fillMaxSize(),
+                        onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
+                        onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
+                    )
+                },
+                onDenied = {
+                    if (!showMinimal) {
+                        CameraPreviewPlaceholder(
+                            message = "Camera permission required for preview.\nTap Start to request permission."
+                        )
+                    }
+                }
             )
 
             if (showMinimal) {
@@ -205,6 +218,9 @@ private fun ControlPanel(
         streamState is StreamState.Connecting ||
         streamState is StreamState.Reconnecting
 
+    val isPreviewing = streamState is StreamState.Previewing
+    val showCameraControls = isStreaming || isPreviewing
+
     val isMuted = (streamState as? StreamState.Live)?.isMuted == true
 
     Column(
@@ -213,6 +229,8 @@ private fun ControlPanel(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Start/Stop button — large FAB
+        // When previewing: requests RECORD_AUDIO + POST_NOTIFICATIONS to go live
+        // When idle: requests all permissions
         PermissionHandler(
             onResult = { result ->
                 if (result.canStreamVideoAndAudio) {
@@ -234,6 +252,8 @@ private fun ControlPanel(
                 },
                 containerColor = if (isStreaming) {
                     MaterialTheme.colorScheme.error
+                } else if (isPreviewing) {
+                    Color(0xFF4CAF50) // Green for "Go Live"
                 } else {
                     MaterialTheme.colorScheme.primary
                 },
@@ -242,7 +262,11 @@ private fun ControlPanel(
             ) {
                 Icon(
                     imageVector = if (isStreaming) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                    contentDescription = if (isStreaming) "Stop stream" else "Start stream",
+                    contentDescription = when {
+                        isStreaming -> "Stop stream"
+                        isPreviewing -> "Go live"
+                        else -> "Start stream"
+                    },
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -257,10 +281,8 @@ private fun ControlPanel(
             )
         }
 
-        // Switch camera button (only shown when streaming)
-        // Short tap cycles through cameras. Long press (on multi-camera devices)
-        // opens a picker popup to select a specific lens.
-        if (isStreaming) {
+        // Switch camera button (shown when streaming OR previewing)
+        if (showCameraControls) {
             CameraSwitchButton(
                 hasMultipleRearCameras = viewModel.hasMultipleRearCameras,
                 availableCameras = viewModel.availableCameras,
@@ -278,7 +300,7 @@ private fun ControlPanel(
             )
         }
 
-        // Settings button (only shown when idle or stopped)
+        // Settings button (shown when idle, stopped, or previewing)
         if (!isStreaming) {
             ControlButton(
                 icon = Icons.Filled.Settings,
@@ -381,6 +403,7 @@ private fun ConnectionStateLabel(
 ) {
     val (text, color) = when (state) {
         is StreamState.Idle -> "" to Color.Transparent
+        is StreamState.Previewing -> "Preview" to Color.White
         is StreamState.Connecting -> "Connecting…" to Color.Yellow
         is StreamState.Live -> "● LIVE" to Color.Red
         is StreamState.Reconnecting -> "Reconnecting (${state.attempt})…" to Color(0xFFFF8800)
