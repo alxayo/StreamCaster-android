@@ -96,6 +96,14 @@
 }
 
 
+# ── SLF4J (logging facade, transitive dependency of RootEncoder) ─────────────
+# SLF4J 1.x references org.slf4j.impl.StaticLoggerBinder which is the legacy
+# static-binding mechanism. No Android SLF4J backend is shipped, so R8 cannot
+# find this class at shrink time. SLF4J gracefully falls back to NOP logging
+# when no binding is present, so suppressing the warning is safe.
+-dontwarn org.slf4j.**
+
+
 # ── Build tooling (compile-time only) ────────────────────────────────────────
 # Google AutoService references javax.annotation.processing classes that are
 # only available at compile time (not in the Android runtime). These warnings
