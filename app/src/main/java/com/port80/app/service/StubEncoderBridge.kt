@@ -14,8 +14,17 @@ class StubEncoderBridge : EncoderBridge {
     }
     private var streaming = false
 
+    /** Last camera ID passed to [switchCamera] or [startPreview], for test assertions. */
+    var lastCameraId: String? = null
+        private set
+
     override fun startPreview(openGlView: OpenGlView) {
         RedactingLogger.d(TAG, "startPreview() called")
+    }
+
+    override fun startPreview(openGlView: OpenGlView, cameraId: String) {
+        RedactingLogger.d(TAG, "startPreview(cameraId=$cameraId) called")
+        lastCameraId = cameraId
     }
 
     override fun stopPreview() {
@@ -42,6 +51,11 @@ class StubEncoderBridge : EncoderBridge {
 
     override fun switchCamera() {
         RedactingLogger.d(TAG, "switchCamera() called")
+    }
+
+    override fun switchCamera(cameraId: String) {
+        RedactingLogger.d(TAG, "switchCamera(cameraId=$cameraId) called")
+        lastCameraId = cameraId
     }
 
     override fun setVideoBitrateOnFly(bitrateKbps: Int) {

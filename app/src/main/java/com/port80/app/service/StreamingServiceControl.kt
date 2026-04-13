@@ -45,6 +45,12 @@ interface StreamingServiceControl {
     fun switchCamera()
 
     /**
+     * Switch to a specific camera by Camera2 camera ID.
+     * No-op if video is not active or the camera ID is invalid.
+     */
+    fun switchCamera(cameraId: String)
+
+    /**
      * Attach an OpenGlView surface for camera output display.
      * Call this when the view's surface is created. Safe to call multiple times.
      */

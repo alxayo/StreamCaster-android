@@ -13,6 +13,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
+import com.port80.app.camera.DeviceCapabilityQuery
+import com.port80.app.data.model.CameraInfo
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
 import com.port80.app.data.model.StopReason
@@ -53,7 +55,8 @@ import javax.inject.Inject
 class StreamViewModel @Inject constructor(
     application: Application,
     private val profileRepository: EndpointProfileRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val deviceCapabilityQuery: DeviceCapabilityQuery
 ) : AndroidViewModel(application) {
 
     companion object {
@@ -102,6 +105,14 @@ class StreamViewModel @Inject constructor(
     /** Whether to keep the screen on during streaming (user preference). */
     val keepScreenOnSetting: StateFlow<Boolean> = settingsRepository.getKeepScreenOn()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    // ── Camera info ──────────────────────────────
+
+    /** All cameras available on this device. */
+    val availableCameras: List<CameraInfo> by lazy { deviceCapabilityQuery.getAvailableCameras() }
+
+    /** Whether the device has more than one rear camera (multi-camera). */
+    val hasMultipleRearCameras: Boolean by lazy { deviceCapabilityQuery.getRearCameras().size > 1 }
 
     // ── Minimal mode ─────────────────────────────
 
@@ -267,6 +278,14 @@ class StreamViewModel @Inject constructor(
      */
     fun switchCamera() {
         serviceControl?.switchCamera()
+    }
+
+    /**
+     * Switch to a specific camera by Camera2 camera ID.
+     * Used by the camera picker UI on multi-camera devices.
+     */
+    fun switchCamera(cameraId: String) {
+        serviceControl?.switchCamera(cameraId)
     }
 
     // ══════════════════════════════════════════════

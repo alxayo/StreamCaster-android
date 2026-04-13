@@ -1,6 +1,8 @@
 package com.port80.app.ui.stream
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,8 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import android.app.Activity
 import android.view.WindowManager
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.port80.app.data.model.CameraInfo
 import com.port80.app.data.model.StopReason
 import com.port80.app.data.model.StreamState
 import com.port80.app.ui.components.CameraPreview
@@ -253,11 +258,14 @@ private fun ControlPanel(
         }
 
         // Switch camera button (only shown when streaming)
+        // Short tap cycles through cameras. Long press (on multi-camera devices)
+        // opens a picker popup to select a specific lens.
         if (isStreaming) {
-            ControlButton(
-                icon = Icons.Filled.Cameraswitch,
-                contentDescription = "Switch camera",
-                onClick = { viewModel.switchCamera() }
+            CameraSwitchButton(
+                hasMultipleRearCameras = viewModel.hasMultipleRearCameras,
+                availableCameras = viewModel.availableCameras,
+                onCycle = { viewModel.switchCamera() },
+                onSelectCamera = { cameraId -> viewModel.switchCamera(cameraId) }
             )
         }
 
@@ -300,6 +308,66 @@ private fun ControlButton(
             imageVector = icon,
             contentDescription = contentDescription
         )
+    }
+}
+
+/**
+ * Camera switch button with multi-camera support.
+ *
+ * - **Short tap:** cycles to the next camera (existing front/back behavior,
+ *   extended to cycle through multiple rear cameras).
+ * - **Long press:** opens a dropdown picker showing all available cameras
+ *   (only on devices with >1 rear camera).
+ * - **Single rear camera devices:** behaves identically to the original button.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CameraSwitchButton(
+    hasMultipleRearCameras: Boolean,
+    availableCameras: List<CameraInfo>,
+    onCycle: () -> Unit,
+    onSelectCamera: (String) -> Unit
+) {
+    var showPicker by remember { mutableStateOf(false) }
+
+    Box {
+        SmallFloatingActionButton(
+            onClick = { /* handled by combinedClickable below */ },
+            containerColor = Color.Black.copy(alpha = 0.6f),
+            contentColor = Color.White,
+            shape = CircleShape,
+            modifier = Modifier.combinedClickable(
+                onClick = onCycle,
+                onLongClick = if (hasMultipleRearCameras) {
+                    { showPicker = true }
+                } else {
+                    null
+                }
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Cameraswitch,
+                contentDescription = "Switch camera"
+            )
+        }
+
+        // Camera picker dropdown — shown on long press for multi-camera devices
+        if (showPicker) {
+            DropdownMenu(
+                expanded = true,
+                onDismissRequest = { showPicker = false }
+            ) {
+                availableCameras.forEach { cam ->
+                    DropdownMenuItem(
+                        text = { Text(cam.label) },
+                        onClick = {
+                            onSelectCamera(cam.id)
+                            showPicker = false
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 

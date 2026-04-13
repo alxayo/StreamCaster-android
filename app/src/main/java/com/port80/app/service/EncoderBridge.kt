@@ -13,6 +13,12 @@ interface EncoderBridge {
     /** Start showing camera preview on the given OpenGlView surface. */
     fun startPreview(openGlView: OpenGlView)
 
+    /**
+     * Start showing camera preview using a specific camera by Camera2 camera ID.
+     * Falls back to the default camera if [cameraId] is invalid.
+     */
+    fun startPreview(openGlView: OpenGlView, cameraId: String)
+
     /** Stop the camera preview (streaming continues without display). */
     fun stopPreview()
 
@@ -38,6 +44,12 @@ interface EncoderBridge {
 
     /** Switch between front and back camera. */
     fun switchCamera()
+
+    /**
+     * Switch to a specific camera by Camera2 camera ID.
+     * Returns silently if the ID is invalid or the camera cannot be opened.
+     */
+    fun switchCamera(cameraId: String)
 
     /** Change video bitrate on the fly without restarting the encoder. */
     fun setVideoBitrateOnFly(bitrateKbps: Int)

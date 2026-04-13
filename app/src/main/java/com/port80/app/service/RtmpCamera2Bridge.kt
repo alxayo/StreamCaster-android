@@ -35,11 +35,23 @@ class RtmpCamera2Bridge(
     // ── Preview ──────────────────────────────────────────────────────────
 
     override fun startPreview(openGlView: OpenGlView) {
-        RedactingLogger.d(TAG, "startPreview()")
+        doStartPreview(openGlView, cameraId = null)
+    }
+
+    override fun startPreview(openGlView: OpenGlView, cameraId: String) {
+        doStartPreview(openGlView, cameraId = cameraId)
+    }
+
+    private fun doStartPreview(openGlView: OpenGlView, cameraId: String?) {
+        RedactingLogger.d(TAG, "startPreview(cameraId=${cameraId ?: "default"})")
         try {
             rtmpCamera2 = RtmpCamera2(openGlView, connectChecker)
             RedactingLogger.d(TAG, "RtmpCamera2 instance created with OpenGlView")
-            rtmpCamera2?.startPreview()
+            if (cameraId != null) {
+                rtmpCamera2?.startPreview(cameraId)
+            } else {
+                rtmpCamera2?.startPreview()
+            }
             RedactingLogger.d(TAG, "startPreview() completed (isOnPreview=${rtmpCamera2?.isOnPreview == true})")
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "startPreview() failed", e)
@@ -152,6 +164,15 @@ class RtmpCamera2Bridge(
             rtmpCamera2?.switchCamera()
         } catch (e: Exception) {
             RedactingLogger.e(TAG, "Failed to switch camera", e)
+        }
+    }
+
+    override fun switchCamera(cameraId: String) {
+        RedactingLogger.d(TAG, "switchCamera(cameraId=$cameraId)")
+        try {
+            rtmpCamera2?.switchCamera(cameraId)
+        } catch (e: Exception) {
+            RedactingLogger.e(TAG, "Failed to switch to camera $cameraId", e)
         }
     }
 

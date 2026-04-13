@@ -11,6 +11,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.pedro.common.ConnectChecker
 import com.pedro.library.view.OpenGlView
+import com.port80.app.camera.DeviceCapabilityQuery
 import com.port80.app.crash.CredentialSanitizer
 import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
@@ -63,6 +64,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     @Inject lateinit var profileRepository: EndpointProfileRepository
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var encoderBridgeFactory: EncoderBridge.Factory
+    @Inject lateinit var deviceCapabilityQuery: DeviceCapabilityQuery
 
     // -- State (owned exclusively by this service) --
     private val _streamState = MutableStateFlow<StreamState>(StreamState.Idle)
@@ -82,6 +84,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     // -- Surface management --
     private var currentSurface: OpenGlView? = null
+
+    // -- Camera switcher: created per-session with available cameras --
+    private var cameraSwitcher: CameraSwitcher? = null
 
     // -- CPU wake lock: keeps the CPU running while streaming in background --
     private var wakeLock: PowerManager.WakeLock? = null
@@ -193,8 +198,15 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun switchCamera() {
         if (_streamState.value is StreamState.Live) {
-            encoderBridge?.switchCamera()
+            cameraSwitcher?.switchCamera() ?: encoderBridge?.switchCamera()
             RedactingLogger.d(TAG, "Camera switched")
+        }
+    }
+
+    override fun switchCamera(cameraId: String) {
+        if (_streamState.value is StreamState.Live) {
+            cameraSwitcher?.switchToCamera(cameraId) ?: encoderBridge?.switchCamera(cameraId)
+            RedactingLogger.d(TAG, "Camera switched to $cameraId")
         }
     }
 
@@ -235,6 +247,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     private fun cleanupAndStop() {
         stopStatsTicker()
         releaseWakeLock()
+        cameraSwitcher = null
         try {
             encoderBridge?.disconnect()
             encoderBridge?.release()
@@ -376,13 +389,41 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         )
     }
 
-    private fun ensurePreview() {
+    private suspend fun ensurePreview() {
         val surface = currentSurface
+        val defaultCameraId = resolveDefaultCameraId()
+
+        // Create camera switcher with the available cameras list
+        val bridge = encoderBridge
+        if (bridge != null) {
+            val availableCameras = deviceCapabilityQuery.getAvailableCameras()
+            cameraSwitcher = CameraSwitcher(bridge, availableCameras).apply {
+                setInitialCamera(defaultCameraId)
+            }
+        }
+
         if (surface == null) {
             RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
         } else {
-            RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview")
-            encoderBridge?.startPreview(surface)
+            RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview with camera $defaultCameraId")
+            encoderBridge?.startPreview(surface, defaultCameraId)
+        }
+    }
+
+    /**
+     * Resolve the persisted default camera ID, validating it against
+     * currently available cameras. Falls back to the primary back camera.
+     */
+    private suspend fun resolveDefaultCameraId(): String {
+        val savedId = settingsRepository.getDefaultCameraId().first()
+        val availableIds = deviceCapabilityQuery.getCameraIds()
+
+        return if (savedId in availableIds) {
+            savedId
+        } else {
+            val fallback = availableIds.firstOrNull() ?: "0"
+            RedactingLogger.w(TAG, "Saved camera ID '$savedId' not available, falling back to '$fallback'")
+            fallback
         }
     }
 

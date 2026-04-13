@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.port80.app.camera.DeviceCapabilityQuery
 import com.port80.app.data.SettingsRepository
+import com.port80.app.data.model.CameraInfo
 import com.port80.app.data.model.Resolution
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -113,6 +114,9 @@ class SettingsViewModel @Inject constructor(
 
     val hasFrontCamera: Boolean by lazy { deviceCapabilityQuery.hasFrontCamera() }
     val hasBackCamera: Boolean by lazy { deviceCapabilityQuery.hasBackCamera() }
+
+    /** All cameras available on this device, with labels and metadata. */
+    val availableCameras: List<CameraInfo> by lazy { deviceCapabilityQuery.getAvailableCameras() }
 
     // ── Update methods ──────────────────────────────────────────────
     // Each launches a coroutine scoped to the ViewModel so it survives

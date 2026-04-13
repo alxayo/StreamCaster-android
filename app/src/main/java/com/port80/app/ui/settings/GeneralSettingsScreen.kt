@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.port80.app.data.model.CameraInfo
 import kotlin.math.roundToInt
 
 /**
@@ -59,6 +60,7 @@ fun GeneralSettingsScreen(
 
     val hasFront = viewModel.hasFrontCamera
     val hasBack = viewModel.hasBackCamera
+    val availableCameras = viewModel.availableCameras
 
     Scaffold(
         topBar = {
@@ -106,8 +108,7 @@ fun GeneralSettingsScreen(
 
             CameraPicker(
                 selectedId = defaultCameraId,
-                hasFront = hasFront,
-                hasBack = hasBack,
+                availableCameras = availableCameras,
                 onSelected = { viewModel.setDefaultCameraId(it) }
             )
 
@@ -191,19 +192,16 @@ private fun ToggleItem(
     )
 }
 
-/** Dropdown for selecting the default camera (front or back). */
+/** Dropdown for selecting the default camera from all available cameras. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CameraPicker(
     selectedId: String,
-    hasFront: Boolean,
-    hasBack: Boolean,
+    availableCameras: List<CameraInfo>,
     onSelected: (String) -> Unit
 ) {
-    // Build the list of available cameras based on device hardware.
-    val options = buildList {
-        if (hasBack) add("0" to "Back Camera")
-        if (hasFront) add("1" to "Front Camera")
+    val options = availableCameras.map { cam ->
+        cam.id to cam.label
     }
 
     // If only one camera exists, show it as a non-interactive label.
@@ -218,7 +216,8 @@ private fun CameraPicker(
     }
 
     var expanded by remember { mutableStateOf(false) }
-    val selectedLabel = options.firstOrNull { it.first == selectedId }?.second ?: "Back Camera"
+    val selectedLabel = options.firstOrNull { it.first == selectedId }?.second
+        ?: options.firstOrNull()?.second ?: "Back"
 
     ExposedDropdownMenuBox(
         expanded = expanded,
