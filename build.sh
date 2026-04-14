@@ -16,6 +16,8 @@ echo "=== StreamCaster Build ==="
 echo "Variant: $VARIANT"
 echo ""
 
+BUILT_VARIANTS=()
+
 build_variant() {
     local flavor="$1"
     local type="$2"
@@ -26,9 +28,10 @@ build_variant() {
     local artifact_name="streamcaster-${flavor}-${type}.apk"
 
     echo "Building ${flavor} ${type}..."
-    "$GRADLEW" --no-daemon ":app:$task" -q
+    "$GRADLEW" --no-daemon --stacktrace ":app:$task" -q
     cp "$PROJECT_DIR/$apk_path" "$ARTIFACTS_DIR/$artifact_name"
     echo "  -> artifacts/$artifact_name"
+    BUILT_VARIANTS+=("${flavor_cap}${type_cap}")
 }
 
 case "$VARIANT" in
@@ -50,8 +53,17 @@ case "$VARIANT" in
 esac
 
 echo ""
+echo "Running lint..."
+for v in "${BUILT_VARIANTS[@]}"; do
+    "$GRADLEW" --no-daemon --stacktrace ":app:lint${v}" -q
+done
+echo "Lint passed."
+
+echo ""
 echo "Running unit tests..."
-"$GRADLEW" --no-daemon testFossDebugUnitTest -q
+for v in "${BUILT_VARIANTS[@]}"; do
+    "$GRADLEW" --no-daemon --stacktrace "test${v}UnitTest" -q
+done
 echo "Tests passed."
 
 echo ""

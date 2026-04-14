@@ -41,11 +41,24 @@ if /i "%VARIANT%"=="fossDebug" (
 )
 
 echo.
+echo Running lint...
+for %%V in (%BUILT_VARIANTS%) do (
+    call "%GRADLEW%" --no-daemon --stacktrace ":app:lint%%V" -q
+    if errorlevel 1 (
+        echo Lint FAILED for %%V.
+        exit /b 1
+    )
+)
+echo Lint passed.
+
+echo.
 echo Running unit tests...
-call "%GRADLEW%" --no-daemon testFossDebugUnitTest -q
-if errorlevel 1 (
-    echo Tests FAILED.
-    exit /b 1
+for %%V in (%BUILT_VARIANTS%) do (
+    call "%GRADLEW%" --no-daemon --stacktrace "test%%VUnitTest" -q
+    if errorlevel 1 (
+        echo Tests FAILED for %%V.
+        exit /b 1
+    )
 )
 echo Tests passed.
 
@@ -64,13 +77,19 @@ set "APK_PATH=app\build\outputs\apk\%FLAVOR%\%TYPE%\app-%FLAVOR%-%TYPE%.apk"
 set "ARTIFACT_NAME=streamcaster-%FLAVOR%-%TYPE%.apk"
 
 echo Building %FLAVOR% %TYPE%...
-call "%GRADLEW%" --no-daemon ":app:%TASK%" -q
+call "%GRADLEW%" --no-daemon --stacktrace ":app:%TASK%" -q
 if errorlevel 1 (
     echo Build FAILED for %FLAVOR% %TYPE%.
     exit /b 1
 )
 copy /y "%PROJECT_DIR%%APK_PATH%" "%ARTIFACTS_DIR%\%ARTIFACT_NAME%" >nul
 echo   -^> artifacts\%ARTIFACT_NAME%
+
+if defined BUILT_VARIANTS (
+    set "BUILT_VARIANTS=%BUILT_VARIANTS% %FLAVOR_CAP%%TYPE_CAP%"
+) else (
+    set "BUILT_VARIANTS=%FLAVOR_CAP%%TYPE_CAP%"
+)
 exit /b 0
 
 :fail
