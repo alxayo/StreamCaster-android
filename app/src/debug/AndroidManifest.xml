@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug manifest overlay.
+    Adds networkSecurityConfig to trust user-installed CAs in debug builds.
+    Merged with the main AndroidManifest.xml by Gradle — release builds are unaffected.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+</manifest>

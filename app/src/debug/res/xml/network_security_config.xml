@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only Network Security Config.
+    Trusts user-installed CA certificates so that RTMPS connections
+    to local dev servers with self-signed certs (e.g., mkcert) work.
+
+    This file is NOT included in release builds.
+    Install your dev CA on the device: Settings → Security → Install certificate.
+-->
+<network-security-config>
+    <base-config>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
