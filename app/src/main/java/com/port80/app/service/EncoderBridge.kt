@@ -75,6 +75,12 @@ interface EncoderBridge {
     /** Check if we're currently streaming. */
     fun isStreaming(): Boolean
 
+    /**
+     * Register a callback that receives the measured FPS once per second.
+     * Must be called after the camera/encoder is created (i.e., after startPreview).
+     */
+    fun setFpsListener(callback: (Int) -> Unit)
+
     /** Factory for creating the correct EncoderBridge per protocol. */
     fun interface Factory {
         fun create(

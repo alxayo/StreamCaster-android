@@ -83,4 +83,8 @@ class StubEncoderBridge : EncoderBridge {
     }
 
     override fun isStreaming(): Boolean = streaming
+
+    override fun setFpsListener(callback: (Int) -> Unit) {
+        // No-op for stub
+    }
 }

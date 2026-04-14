@@ -240,6 +240,10 @@ class SrtCamera2Bridge(
         return srtCamera2?.isStreaming == true
     }
 
+    override fun setFpsListener(callback: (Int) -> Unit) {
+        srtCamera2?.setFpsListener { fps -> callback(fps) }
+    }
+
     // ── SRT URL builder ──────────────────────────────────────────────────
 
     /**

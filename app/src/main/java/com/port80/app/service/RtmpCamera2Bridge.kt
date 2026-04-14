@@ -238,6 +238,10 @@ class RtmpCamera2Bridge(
     override fun isStreaming(): Boolean {
         return rtmpCamera2?.isStreaming == true
     }
+
+    override fun setFpsListener(callback: (Int) -> Unit) {
+        rtmpCamera2?.setFpsListener { fps -> callback(fps) }
+    }
 }
 
 /** Map our VideoCodec enum to RootEncoder's VideoCodec enum. */

@@ -100,6 +100,10 @@ fun StreamScreen(
         streamState is StreamState.Reconnecting
 
     val isMinimalMode by viewModel.isMinimalMode.collectAsState()
+    val endpointProfiles by viewModel.endpointProfiles.collectAsState()
+    val selectedProfileId by viewModel.selectedProfileId.collectAsState()
+    val activeEndpointName = endpointProfiles.firstOrNull { it.id == selectedProfileId }?.name
+        ?: endpointProfiles.firstOrNull()?.name
 
     // Use Activity window flag so it survives in-app navigation
     DisposableEffect(isActiveStream, keepScreenOn) {
@@ -198,6 +202,7 @@ fun StreamScreen(
                 if (streamState is StreamState.Live || streamState is StreamState.Reconnecting) {
                     StreamHud(
                         stats = streamStats,
+                        endpointName = activeEndpointName,
                         modifier = Modifier.align(Alignment.TopCenter)
                     )
                 }

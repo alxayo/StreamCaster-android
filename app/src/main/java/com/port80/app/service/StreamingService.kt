@@ -682,6 +682,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         _lastFailureDetail.value = null
         _streamState.value = StreamState.Live()
         startStatsTicker()
+        encoderBridge?.setFpsListener { fps ->
+            _streamStats.value = _streamStats.value.copy(fps = fps.toFloat())
+        }
     }
 
     override fun onConnectionFailed(reason: String) {

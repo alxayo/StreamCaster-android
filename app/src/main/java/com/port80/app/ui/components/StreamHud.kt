@@ -27,6 +27,7 @@ import com.port80.app.data.model.ThermalLevel
 @Composable
 fun StreamHud(
     stats: StreamStats,
+    endpointName: String? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -47,8 +48,11 @@ fun StreamHud(
         // Center: duration
         HudText(formatDuration(stats.durationMs))
 
-        // Right side: protocol badge, codec badge, recording indicator, thermal badge
+        // Right side: endpoint name, protocol badge, codec badge, recording indicator, thermal badge
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            endpointName?.let { name ->
+                HudBadge(text = name, color = Color.White)
+            }
             stats.protocol?.let { protocol ->
                 HudBadge(
                     text = protocol.name,
