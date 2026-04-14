@@ -3,6 +3,7 @@ package com.port80.app.ui.stream
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -367,23 +368,29 @@ private fun CameraSwitchButton(
     var showPicker by remember { mutableStateOf(false) }
 
     Box {
-        SmallFloatingActionButton(
-            onClick = { /* handled by combinedClickable below */ },
-            containerColor = Color.Black.copy(alpha = 0.6f),
-            contentColor = Color.White,
-            shape = CircleShape,
-            modifier = Modifier.combinedClickable(
-                onClick = onCycle,
-                onLongClick = if (hasMultipleRearCameras) {
-                    { showPicker = true }
-                } else {
-                    null
-                }
-            )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = CircleShape
+                )
+                .clip(CircleShape)
+                .combinedClickable(
+                    onClick = onCycle,
+                    onLongClick = if (hasMultipleRearCameras) {
+                        { showPicker = true }
+                    } else {
+                        null
+                    }
+                )
         ) {
             Icon(
                 imageVector = Icons.Filled.Cameraswitch,
-                contentDescription = "Switch camera"
+                contentDescription = "Switch camera",
+                tint = Color.White,
+                modifier = Modifier.size(24.dp)
             )
         }
 
