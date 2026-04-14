@@ -39,18 +39,25 @@ class SrtCamera2Bridge(
     }
 
     override fun startPreview(openGlView: OpenGlView, cameraId: String) {
-        doStartPreview(openGlView, cameraId = cameraId)
+        doStartPreview(openGlView, cameraId = cameraId, width = 0, height = 0)
     }
 
-    private fun doStartPreview(openGlView: OpenGlView, cameraId: String?) {
-        RedactingLogger.d(TAG, "startPreview(cameraId=${cameraId ?: "default"})")
+    override fun startPreview(openGlView: OpenGlView, cameraId: String, width: Int, height: Int) {
+        doStartPreview(openGlView, cameraId = cameraId, width = width, height = height)
+    }
+
+    private fun doStartPreview(openGlView: OpenGlView, cameraId: String?, width: Int = 0, height: Int = 0) {
+        RedactingLogger.d(TAG, "startPreview(cameraId=${cameraId ?: "default"}, ${width}x${height})")
         try {
             srtCamera2 = SrtCamera2(openGlView, connectChecker)
             RedactingLogger.d(TAG, "SrtCamera2 instance created with OpenGlView")
-            if (cameraId != null) {
-                srtCamera2?.startPreview(cameraId)
-            } else {
-                srtCamera2?.startPreview()
+            when {
+                cameraId != null && width > 0 && height > 0 ->
+                    srtCamera2?.startPreview(cameraId, width, height)
+                cameraId != null ->
+                    srtCamera2?.startPreview(cameraId)
+                else ->
+                    srtCamera2?.startPreview()
             }
             RedactingLogger.d(TAG, "startPreview() completed (isOnPreview=${srtCamera2?.isOnPreview == true})")
         } catch (e: Exception) {
@@ -110,11 +117,12 @@ class SrtCamera2Bridge(
         val audioReady: Boolean
         try {
             videoReady = camera.prepareVideo(
-                config.width,
-                config.height,
+                config.orientedWidth,
+                config.orientedHeight,
                 config.fps,
                 config.videoBitrateKbps * 1000,
-                config.keyframeIntervalSec
+                config.keyframeIntervalSec,
+                config.rotation
             )
             audioReady = camera.prepareAudio(
                 config.audioBitrateKbps * 1000,

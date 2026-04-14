@@ -20,6 +20,13 @@ interface EncoderBridge {
      */
     fun startPreview(openGlView: OpenGlView, cameraId: String)
 
+    /**
+     * Start showing camera preview with explicit surface dimensions.
+     * This ensures the preview renders at the correct resolution for the
+     * current display orientation, avoiding black bars on rotation.
+     */
+    fun startPreview(openGlView: OpenGlView, cameraId: String, width: Int, height: Int)
+
     /** Stop the camera preview (streaming continues without display). */
     fun stopPreview()
 

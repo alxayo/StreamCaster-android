@@ -124,20 +124,16 @@ fun GeneralSettingsScreen(
 
             SectionHeader("Orientation")
 
-            ToggleItem(
-                title = "Lock Orientation",
-                description = "Prevent screen rotation while streaming",
-                checked = orientationLocked,
-                onCheckedChange = { viewModel.setOrientationLocked(it) }
+            OrientationPicker(
+                selected = preferredOrientation,
+                onSelected = { orientation ->
+                    viewModel.setPreferredOrientation(orientation)
+                    // Derive lock state: anything other than Auto means locked
+                    viewModel.setOrientationLocked(
+                        orientation != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    )
+                }
             )
-
-            // Only show preferred orientation when locking is enabled.
-            if (orientationLocked) {
-                OrientationPicker(
-                    selected = preferredOrientation,
-                    onSelected = { viewModel.setPreferredOrientation(it) }
-                )
-            }
 
             // ── Battery ─────────────────────────────────────────────
 
@@ -265,15 +261,14 @@ private fun OrientationPicker(
     selected: Int,
     onSelected: (Int) -> Unit
 ) {
-    // Map Android's ActivityInfo orientation constants to human labels.
     val options = listOf(
-        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE to "Landscape",
-        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT to "Portrait",
-        ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED to "Auto"
+        ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED to "Auto (rotate freely)",
+        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT to "Portrait (locked)",
+        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE to "Landscape (locked)"
     )
 
     var expanded by remember { mutableStateOf(false) }
-    val selectedLabel = options.firstOrNull { it.first == selected }?.second ?: "Auto"
+    val selectedLabel = options.firstOrNull { it.first == selected }?.second ?: "Auto (rotate freely)"
 
     ExposedDropdownMenuBox(
         expanded = expanded,

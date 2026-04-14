@@ -85,6 +85,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     // -- Surface management --
     private var currentSurface: OpenGlView? = null
+    private var currentPreviewWidth: Int = 0
+    private var currentPreviewHeight: Int = 0
+    private var previewResizeJob: Job? = null
 
     // -- Camera switcher: created per-session with available cameras --
     private var cameraSwitcher: CameraSwitcher? = null
@@ -165,6 +168,8 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         _streamState.value = StreamState.Connecting
         _lastFailureDetail.value = null
         _streamStats.value = StreamStats()
+        previewResizeJob?.cancel()
+        previewResizeJob = null
         RedactingLogger.i(TAG, "Starting stream with profile: $profileId")
 
         serviceScope.launch { startStreamInternal(profileId) }
@@ -237,7 +242,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                     setInitialCamera(cameraId)
                 }
 
-                bridge.startPreview(surface, cameraId)
+                bridge.startPreview(surface, cameraId, currentPreviewWidth, currentPreviewHeight)
                 applyStabilizationMode(stabMode, cameraId)
 
                 _streamState.value = StreamState.Previewing(cameraId)
@@ -255,6 +260,8 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             return
         }
 
+        previewResizeJob?.cancel()
+        previewResizeJob = null
         RedactingLogger.d(TAG, "Stopping preview-only session")
         encoderBridge?.stopPreview()
         encoderBridge?.release()
@@ -312,6 +319,8 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun detachPreviewSurface() {
         currentSurface = null
+        previewResizeJob?.cancel()
+        previewResizeJob = null
         val state = _streamState.value
         if (state is StreamState.Live || state == StreamState.Connecting ||
             state is StreamState.Reconnecting
@@ -329,12 +338,64 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         }
     }
 
+    override fun onPreviewDimensionsChanged(width: Int, height: Int) {
+        currentPreviewWidth = width
+        currentPreviewHeight = height
+
+        val state = _streamState.value
+        // During active streaming, orientation is locked — ignore dimension changes
+        if (state is StreamState.Live || state == StreamState.Connecting ||
+            state is StreamState.Reconnecting
+        ) {
+            return
+        }
+
+        // Only restart preview when in Previewing state and aspect ratio flipped
+        if (state !is StreamState.Previewing) return
+
+        val surface = currentSurface ?: return
+        val cameraId = state.cameraId
+
+        // Debounce: wait for rotation animation to settle
+        previewResizeJob?.cancel()
+        previewResizeJob = serviceScope.launch {
+            delay(300L)
+
+            RedactingLogger.i(TAG, "Restarting preview for new dimensions ${width}x${height}")
+            try {
+                val stabMode = settingsRepository.getStabilizationMode().first()
+
+                // Release old bridge to avoid leaking Camera2 state
+                encoderBridge?.stopPreview()
+                encoderBridge?.release()
+
+                // Recreate bridge and restart preview
+                encoderBridge = RtmpCamera2Bridge(this@StreamingService)
+                val bridge = encoderBridge ?: return@launch
+                val availableCameras = deviceCapabilityQuery.getAvailableCameras()
+                cameraSwitcher = CameraSwitcher(bridge, availableCameras).apply {
+                    setInitialCamera(cameraId)
+                }
+
+                bridge.startPreview(surface, cameraId, width, height)
+                applyStabilizationMode(stabMode, cameraId)
+
+                _streamState.value = StreamState.Previewing(cameraId)
+                RedactingLogger.i(TAG, "Preview restarted at ${width}x${height}")
+            } catch (e: Exception) {
+                RedactingLogger.e(TAG, "Failed to restart preview after rotation", e)
+            }
+        }
+    }
+
     // ==========================================================
     // Private Helpers
     // ==========================================================
 
     /** Clean up all streaming resources. */
     private fun cleanupAndStop() {
+        previewResizeJob?.cancel()
+        previewResizeJob = null
         stopStatsTicker()
         releaseWakeLock()
         cameraSwitcher = null
@@ -486,6 +547,23 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         profile: com.port80.app.data.model.EndpointProfile
     ): EncoderConfig {
         val resolution = settingsRepository.getResolution().first()
+
+        // Determine display orientation: portrait if height > width on the surface
+        val isPortrait = currentPreviewHeight > currentPreviewWidth
+        val orientedWidth: Int
+        val orientedHeight: Int
+        val rotation: Int
+        if (isPortrait) {
+            // Portrait: swap so the narrower side is width
+            orientedWidth = minOf(resolution.width, resolution.height)
+            orientedHeight = maxOf(resolution.width, resolution.height)
+            rotation = 90
+        } else {
+            orientedWidth = maxOf(resolution.width, resolution.height)
+            orientedHeight = minOf(resolution.width, resolution.height)
+            rotation = 0
+        }
+
         return EncoderConfig(
             videoCodec = profile.videoCodec,
             width = resolution.width,
@@ -496,6 +574,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             audioSampleRate = settingsRepository.getAudioSampleRate().first(),
             stereo = settingsRepository.getStereo().first(),
             keyframeIntervalSec = settingsRepository.getKeyframeIntervalSec().first(),
+            orientedWidth = orientedWidth,
+            orientedHeight = orientedHeight,
+            rotation = rotation,
         )
     }
 
@@ -516,7 +597,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
         } else {
             RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview with camera $cameraId")
-            encoderBridge?.startPreview(surface, cameraId)
+            encoderBridge?.startPreview(surface, cameraId, currentPreviewWidth, currentPreviewHeight)
         }
     }
 

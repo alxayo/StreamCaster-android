@@ -55,6 +55,7 @@ import com.port80.app.ui.components.MinimalStreamingOverlay
 import com.port80.app.ui.components.PermissionHandler
 import com.port80.app.ui.components.PreviewPermissionGate
 import com.port80.app.ui.components.StreamHud
+import com.port80.app.util.OrientationHelper
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -104,6 +105,18 @@ fun StreamScreen(
         }
     }
 
+    // Lock orientation while streaming to prevent rotation-induced preview disruption.
+    // Restore user preference when stream ends.
+    DisposableEffect(isActiveStream) {
+        if (isActiveStream && activity != null) {
+            OrientationHelper.lockToCurrentOrientation(activity)
+        } else if (!isActiveStream && activity != null) {
+            // Restore user's orientation preference
+            viewModel.restoreOrientationPreference(activity)
+        }
+        onDispose {}
+    }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Show error snackbar when stream stops with an error
@@ -151,7 +164,8 @@ fun StreamScreen(
                     CameraPreview(
                         modifier = if (showMinimal) Modifier.size(1.dp) else Modifier.fillMaxSize(),
                         onSurfaceReady = { openGlView -> viewModel.onSurfaceReady(openGlView) },
-                        onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() }
+                        onSurfaceDestroyed = { viewModel.onSurfaceDestroyed() },
+                        onSurfaceSizeChanged = { w, h -> viewModel.onSurfaceSizeChanged(w, h) }
                     )
                 },
                 onDenied = {

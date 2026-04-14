@@ -77,6 +77,13 @@ interface StreamingServiceControl {
     fun detachPreviewSurface()
 
     /**
+     * Notify the service that the preview surface dimensions changed (e.g., device rotation).
+     * In Previewing state, restarts the preview with new dimensions after a debounce.
+     * No-op during active streaming (orientation is locked).
+     */
+    fun onPreviewDimensionsChanged(width: Int, height: Int)
+
+    /**
      * Set image stabilization mode. Applied to the active camera session.
      * Safe to call during preview or streaming.
      */

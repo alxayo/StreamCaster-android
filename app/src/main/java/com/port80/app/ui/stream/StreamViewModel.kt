@@ -36,6 +36,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import com.port80.app.util.OrientationHelper
 import javax.inject.Inject
 
 /**
@@ -361,6 +364,31 @@ class StreamViewModel @Inject constructor(
         // instance is needed for the next surface lifecycle.
         surfaceDeferred = CompletableDeferred()
         RedactingLogger.d(TAG, "Surface destroyed — preview detached")
+    }
+
+    /**
+     * Called from [CameraPreview] whenever the surface dimensions change
+     * (e.g., device rotation). Forwards to the service so it can restart
+     * the preview at the correct resolution.
+     */
+    fun onSurfaceSizeChanged(width: Int, height: Int) {
+        serviceControl?.onPreviewDimensionsChanged(width, height)
+    }
+
+    /**
+     * Restore the user's saved orientation preference on the given Activity.
+     * Called when streaming ends so the Activity returns to the user's choice.
+     */
+    fun restoreOrientationPreference(activity: Activity) {
+        viewModelScope.launch {
+            val locked = settingsRepository.getOrientationLocked().first()
+            val preferred = settingsRepository.getPreferredOrientation().first()
+            if (locked && preferred != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+                OrientationHelper.lock(activity, preferred)
+            } else {
+                OrientationHelper.unlock(activity)
+            }
+        }
     }
 
     // ══════════════════════════════════════════════

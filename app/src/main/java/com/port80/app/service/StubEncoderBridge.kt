@@ -32,6 +32,11 @@ class StubEncoderBridge : EncoderBridge {
         lastCameraId = cameraId
     }
 
+    override fun startPreview(openGlView: OpenGlView, cameraId: String, width: Int, height: Int) {
+        RedactingLogger.d(TAG, "startPreview(cameraId=$cameraId, ${width}x${height}) called")
+        lastCameraId = cameraId
+    }
+
     override fun stopPreview() {
         RedactingLogger.d(TAG, "stopPreview() called")
     }

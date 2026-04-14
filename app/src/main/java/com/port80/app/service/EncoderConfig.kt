@@ -18,4 +18,10 @@ data class EncoderConfig(
     val audioSampleRate: Int = 44100,
     val stereo: Boolean = true,
     val keyframeIntervalSec: Int = 2,
+    /** Width oriented for the current display rotation (portrait: swap w↔h). */
+    val orientedWidth: Int = width,
+    /** Height oriented for the current display rotation (portrait: swap w↔h). */
+    val orientedHeight: Int = height,
+    /** Display rotation in degrees (0, 90, 180, 270) passed to prepareVideo. */
+    val rotation: Int = 0,
 )

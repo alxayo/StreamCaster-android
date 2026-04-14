@@ -30,7 +30,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 fun CameraPreview(
     modifier: Modifier = Modifier,
     onSurfaceReady: (OpenGlView) -> Unit,
-    onSurfaceDestroyed: () -> Unit
+    onSurfaceDestroyed: () -> Unit,
+    onSurfaceSizeChanged: (width: Int, height: Int) -> Unit = { _, _ -> }
 ) {
     // AndroidView bridges traditional Android Views into Compose.
     // OpenGlView (from RootEncoder) extends SurfaceView and is the required
@@ -50,7 +51,7 @@ fun CameraPreview(
                 }
 
                 override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                    // Surface resized — RootEncoder handles this internally.
+                    onSurfaceSizeChanged(width, height)
                 }
 
                 override fun surfaceDestroyed(holder: SurfaceHolder) {
