@@ -40,25 +40,24 @@ class RtmpCamera2Bridge(
     }
 
     override fun startPreview(openGlView: OpenGlView, cameraId: String) {
-        doStartPreview(openGlView, cameraId = cameraId, width = 0, height = 0)
+        doStartPreview(openGlView, cameraId = cameraId)
     }
 
     override fun startPreview(openGlView: OpenGlView, cameraId: String, width: Int, height: Int) {
-        doStartPreview(openGlView, cameraId = cameraId, width = width, height = height)
+        // width/height are surface dimensions used for orientation tracking only.
+        // RootEncoder picks camera-native resolution internally.
+        doStartPreview(openGlView, cameraId = cameraId)
     }
 
-    private fun doStartPreview(openGlView: OpenGlView, cameraId: String?, width: Int = 0, height: Int = 0) {
-        RedactingLogger.d(TAG, "startPreview(cameraId=${cameraId ?: "default"}, ${width}x${height})")
+    private fun doStartPreview(openGlView: OpenGlView, cameraId: String?) {
+        RedactingLogger.d(TAG, "startPreview(cameraId=${cameraId ?: "default"})")
         try {
             rtmpCamera2 = RtmpCamera2(openGlView, connectChecker)
             RedactingLogger.d(TAG, "RtmpCamera2 instance created with OpenGlView")
-            when {
-                cameraId != null && width > 0 && height > 0 ->
-                    rtmpCamera2?.startPreview(cameraId, width, height)
-                cameraId != null ->
-                    rtmpCamera2?.startPreview(cameraId)
-                else ->
-                    rtmpCamera2?.startPreview()
+            if (cameraId != null) {
+                rtmpCamera2?.startPreview(cameraId)
+            } else {
+                rtmpCamera2?.startPreview()
             }
             RedactingLogger.d(TAG, "startPreview() completed (isOnPreview=${rtmpCamera2?.isOnPreview == true})")
         } catch (e: Exception) {

@@ -242,7 +242,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                     setInitialCamera(cameraId)
                 }
 
-                bridge.startPreview(surface, cameraId, currentPreviewWidth, currentPreviewHeight)
+                bridge.startPreview(surface, cameraId)
                 applyStabilizationMode(stabMode, cameraId)
 
                 _streamState.value = StreamState.Previewing(cameraId)
@@ -273,8 +273,19 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun switchCamera() {
         val state = _streamState.value
-        if (state is StreamState.Live || state is StreamState.Previewing) {
-            cameraSwitcher?.switchCamera() ?: encoderBridge?.switchCamera()
+        if (state is StreamState.Live || state is StreamState.Previewing ||
+            state == StreamState.Connecting || state is StreamState.Reconnecting
+        ) {
+            val switcher = cameraSwitcher
+            val bridge = encoderBridge
+            if (switcher != null) {
+                switcher.switchCamera()
+            } else if (bridge != null) {
+                bridge.switchCamera()
+            } else {
+                RedactingLogger.w(TAG, "switchCamera: no switcher or bridge ready yet")
+                return
+            }
             updatePreviewingCameraId()
             revalidateStabilizationAfterSwitch()
             RedactingLogger.d(TAG, "Camera switched")
@@ -283,8 +294,19 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun switchCamera(cameraId: String) {
         val state = _streamState.value
-        if (state is StreamState.Live || state is StreamState.Previewing) {
-            cameraSwitcher?.switchToCamera(cameraId) ?: encoderBridge?.switchCamera(cameraId)
+        if (state is StreamState.Live || state is StreamState.Previewing ||
+            state == StreamState.Connecting || state is StreamState.Reconnecting
+        ) {
+            val switcher = cameraSwitcher
+            val bridge = encoderBridge
+            if (switcher != null) {
+                switcher.switchToCamera(cameraId)
+            } else if (bridge != null) {
+                bridge.switchCamera(cameraId)
+            } else {
+                RedactingLogger.w(TAG, "switchCamera($cameraId): no switcher or bridge ready yet")
+                return
+            }
             updatePreviewingCameraId()
             revalidateStabilizationAfterSwitch()
             RedactingLogger.d(TAG, "Camera switched to $cameraId")
@@ -377,11 +399,11 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                     setInitialCamera(cameraId)
                 }
 
-                bridge.startPreview(surface, cameraId, width, height)
+                bridge.startPreview(surface, cameraId)
                 applyStabilizationMode(stabMode, cameraId)
 
                 _streamState.value = StreamState.Previewing(cameraId)
-                RedactingLogger.i(TAG, "Preview restarted at ${width}x${height}")
+                RedactingLogger.i(TAG, "Preview restarted for orientation change")
             } catch (e: Exception) {
                 RedactingLogger.e(TAG, "Failed to restart preview after rotation", e)
             }
@@ -597,7 +619,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             RedactingLogger.w(TAG, "startStream(): no preview surface attached; stream will attempt headless camera start")
         } else {
             RedactingLogger.d(TAG, "startStream(): preview surface present, starting preview with camera $cameraId")
-            encoderBridge?.startPreview(surface, cameraId, currentPreviewWidth, currentPreviewHeight)
+            encoderBridge?.startPreview(surface, cameraId)
         }
     }
 

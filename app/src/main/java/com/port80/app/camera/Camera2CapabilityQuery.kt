@@ -65,8 +65,12 @@ class Camera2CapabilityQuery @Inject constructor(
 
         // Collect physical camera IDs that belong to a logical multi-camera (API 28+)
         // so we can avoid duplicating them alongside their logical parent.
+        // Only exclude physical IDs that are NOT also exposed as top-level camera IDs,
+        // which avoids accidentally hiding legitimate cameras on devices like Samsung
+        // that expose both logical and physical cameras at the top level.
         val physicalIdsOwnedByLogical = mutableSetOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val topLevelIds = allIds.toSet()
             for (id in allIds) {
                 val chars = getCameraCharacteristicsSafe(id) ?: continue
                 val capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
@@ -74,7 +78,15 @@ class Camera2CapabilityQuery @Inject constructor(
                     CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA
                 ) == true
                 if (isLogical) {
-                    physicalIdsOwnedByLogical.addAll(chars.physicalCameraIds)
+                    val physicalIds = chars.physicalCameraIds ?: emptySet()
+                    for (physId in physicalIds) {
+                        // Only exclude physical IDs that aren't top-level cameras.
+                        // If a physical ID is also a top-level ID, it's a standalone
+                        // camera that should remain visible.
+                        if (physId !in topLevelIds) {
+                            physicalIdsOwnedByLogical.add(physId)
+                        }
+                    }
                 }
             }
         }
@@ -277,7 +289,10 @@ class Camera2CapabilityQuery @Inject constructor(
         val grouped = cameras.groupBy { it.facing }
         return grouped.flatMap { (facing, group) ->
             when {
-                facing == CameraFacing.FRONT -> group.map { it.copy(label = "Front") }
+                facing == CameraFacing.FRONT && group.size == 1 -> group.map { it.copy(label = "Front") }
+                facing == CameraFacing.FRONT -> group.mapIndexed { i, cam ->
+                    cam.copy(label = "Front ${i + 1}")
+                }
                 facing == CameraFacing.EXTERNAL -> group.map { it.copy(label = "External") }
                 group.size == 1 -> group.map { it.copy(label = "Back") }
                 else -> labelRearCameras(group)

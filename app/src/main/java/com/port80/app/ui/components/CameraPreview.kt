@@ -1,6 +1,7 @@
 package com.port80.app.ui.components
 
 import android.view.SurfaceHolder
+import com.pedro.encoder.utils.gl.AspectRatioMode
 import com.pedro.library.view.OpenGlView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -43,6 +44,10 @@ fun CameraPreview(
             .background(Color.Black),
         factory = { context ->
             val openGlView = OpenGlView(context)
+            // Fill the surface, cropping edges rather than letterboxing with black bars.
+            // Camera sensors always produce landscape-native frames; Fill crops to fit
+            // portrait surfaces without black bars.
+            openGlView.setAspectRatioMode(AspectRatioMode.Fill)
             openGlView.holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) {
                     // Pass the OpenGlView itself (not just the holder) so RtmpCamera2
