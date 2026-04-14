@@ -15,6 +15,7 @@ import com.port80.app.data.EndpointProfileRepository
 import com.port80.app.data.SettingsRepository
 import com.port80.app.camera.DeviceCapabilityQuery
 import com.port80.app.data.model.CameraInfo
+import com.port80.app.data.model.EndpointProfile
 import com.port80.app.data.model.StabilizationMode
 import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.StreamStats
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
 import java.lang.ref.WeakReference
 import android.app.Activity
 import android.content.pm.ActivityInfo
@@ -109,6 +111,24 @@ class StreamViewModel @Inject constructor(
     /** Whether to keep the screen on during streaming (user preference). */
     val keepScreenOnSetting: StateFlow<Boolean> = settingsRepository.getKeepScreenOn()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    // ── Endpoint profiles ────────────────────────
+
+    /** All configured streaming endpoint profiles. */
+    val endpointProfiles: StateFlow<List<EndpointProfile>> = profileRepository.getAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** ID of the currently selected (default) endpoint profile. */
+    val selectedProfileId: StateFlow<String?> = profileRepository.getAll()
+        .map { profiles -> profiles.firstOrNull { it.isDefault }?.id ?: profiles.firstOrNull()?.id }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Set a profile as the active endpoint for streaming. */
+    fun selectEndpoint(profileId: String) {
+        viewModelScope.launch {
+            profileRepository.setDefault(profileId)
+        }
+    }
 
     // ── Camera info ──────────────────────────────
 

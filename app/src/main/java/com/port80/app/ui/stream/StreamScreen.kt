@@ -2,6 +2,7 @@ package com.port80.app.ui.stream
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
@@ -10,13 +11,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.DropdownMenu
@@ -42,12 +46,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.app.Activity
 import android.view.WindowManager
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.port80.app.data.model.CameraInfo
+import com.port80.app.data.model.EndpointProfile
 import com.port80.app.data.model.StopReason
 import com.port80.app.data.model.StreamState
 import com.port80.app.ui.components.CameraPreview
@@ -238,11 +245,23 @@ private fun ControlPanel(
 
     val isMuted = (streamState as? StreamState.Live)?.isMuted == true
 
+    val endpointProfiles by viewModel.endpointProfiles.collectAsState()
+    val selectedProfileId by viewModel.selectedProfileId.collectAsState()
+
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Endpoint quick-switch (shown when not streaming and profiles exist)
+        if (!isStreaming && endpointProfiles.isNotEmpty()) {
+            EndpointSwitchButton(
+                profiles = endpointProfiles,
+                selectedProfileId = selectedProfileId,
+                onSelect = { profileId -> viewModel.selectEndpoint(profileId) }
+            )
+        }
+
         // Start/Stop button — large FAB
         // When previewing: requests RECORD_AUDIO + POST_NOTIFICATIONS to go live
         // When idle: requests all permissions
@@ -410,6 +429,92 @@ private fun CameraSwitchButton(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Endpoint quick-switch button.
+ *
+ * - **Tap:** opens a dropdown showing all configured streaming endpoints.
+ * - Selected profile is indicated with a checkmark.
+ * - Shows the active profile name below the button.
+ */
+@Composable
+private fun EndpointSwitchButton(
+    profiles: List<EndpointProfile>,
+    selectedProfileId: String?,
+    onSelect: (String) -> Unit
+) {
+    var showPicker by remember { mutableStateOf(false) }
+    val selectedName = profiles.firstOrNull { it.id == selectedProfileId }?.name
+        ?: profiles.firstOrNull()?.name ?: ""
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = CircleShape
+                    )
+                    .clip(CircleShape)
+                    .clickable { showPicker = true }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Podcasts,
+                    contentDescription = "Select endpoint",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            if (showPicker) {
+                DropdownMenu(
+                    expanded = true,
+                    onDismissRequest = { showPicker = false }
+                ) {
+                    profiles.forEach { profile ->
+                        DropdownMenuItem(
+                            text = { Text(profile.name) },
+                            onClick = {
+                                onSelect(profile.id)
+                                showPicker = false
+                            },
+                            leadingIcon = if (profile.id == selectedProfileId) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = "Selected",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            } else {
+                                null
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Active profile name label
+        if (selectedName.isNotEmpty()) {
+            Text(
+                text = selectedName,
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .width(64.dp)
+            )
         }
     }
 }
