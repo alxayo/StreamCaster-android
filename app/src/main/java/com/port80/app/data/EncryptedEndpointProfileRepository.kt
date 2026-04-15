@@ -6,6 +6,8 @@ import com.port80.app.util.RedactingLogger
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.port80.app.data.model.EndpointProfile
+import com.port80.app.data.model.SrtMode
+import com.port80.app.data.model.VideoCodec
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -210,6 +212,11 @@ internal object ProfileSerializer {
     private const val KEY_STREAM_KEY = "streamKey"
     private const val KEY_USERNAME = "username"
     private const val KEY_PASSWORD = "password"
+    private const val KEY_VIDEO_CODEC = "videoCodec"
+    private const val KEY_SRT_PASSPHRASE = "srtPassphrase"
+    private const val KEY_SRT_LATENCY_MS = "srtLatencyMs"
+    private const val KEY_SRT_MODE = "srtMode"
+    private const val KEY_SRT_STREAM_ID = "srtStreamId"
 
     /** Convert an [EndpointProfile] to a [Map]. isDefault is NOT included. */
     fun toMap(profile: EndpointProfile): Map<String, Any?> = buildMap {
@@ -219,6 +226,11 @@ internal object ProfileSerializer {
         put(KEY_STREAM_KEY, profile.streamKey)
         put(KEY_USERNAME, profile.username)
         put(KEY_PASSWORD, profile.password)
+        put(KEY_VIDEO_CODEC, profile.videoCodec.name)
+        put(KEY_SRT_PASSPHRASE, profile.srtPassphrase)
+        put(KEY_SRT_LATENCY_MS, profile.srtLatencyMs)
+        put(KEY_SRT_MODE, profile.srtMode.name)
+        put(KEY_SRT_STREAM_ID, profile.srtStreamId)
     }
 
     /** Reconstruct an [EndpointProfile] from a [Map]. */
@@ -229,7 +241,14 @@ internal object ProfileSerializer {
         streamKey = map[KEY_STREAM_KEY] as String,
         username = map[KEY_USERNAME] as? String,
         password = map[KEY_PASSWORD] as? String,
-        isDefault = false // Resolved externally from default_profile_id.
+        isDefault = false, // Resolved externally from default_profile_id.
+        videoCodec = (map[KEY_VIDEO_CODEC] as? String)?.let {
+            runCatching { VideoCodec.valueOf(it) }.getOrNull()
+        } ?: VideoCodec.H264,
+        srtPassphrase = map[KEY_SRT_PASSPHRASE] as? String,
+        srtLatencyMs = (map[KEY_SRT_LATENCY_MS] as? Number)?.toInt() ?: 120,
+        srtMode = (map[KEY_SRT_MODE] as? String)?.let { SrtMode.fromString(it) } ?: SrtMode.CALLER,
+        srtStreamId = map[KEY_SRT_STREAM_ID] as? String,
     )
 
     /** Serialize a profile to a JSON string via [JSONObject]. */

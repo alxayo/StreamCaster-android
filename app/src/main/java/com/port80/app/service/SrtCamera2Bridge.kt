@@ -28,6 +28,8 @@ class SrtCamera2Bridge(
 
     companion object {
         private const val TAG = "SrtCamera2Bridge"
+        /** Minimal SRT Access Control stream_id: publish mode, no resource filter. */
+        private const val DEFAULT_SRT_STREAM_ID = "#!::m=publish"
     }
 
     private var srtCamera2: SrtCamera2? = null
@@ -249,6 +251,10 @@ class SrtCamera2Bridge(
     /**
      * Build the SRT URL from typed parameters.
      * Format: srt://host:port?mode=caller&latency=120&passphrase=X&streamid=Y
+     *
+     * Always includes `streamid=` to prevent RootEncoder from falling back to
+     * using the full query string as the SRT handshake stream_id. If the user
+     * hasn't specified a stream ID, defaults to SRT Access Control publish mode.
      */
     private fun buildSrtUrl(params: ConnectionParams.Srt): String {
         val sb = StringBuilder("srt://${params.host}:${params.port}")
@@ -260,9 +266,17 @@ class SrtCamera2Bridge(
         if (!params.passphrase.isNullOrBlank()) {
             queryParams.add("passphrase=${params.passphrase}")
         }
-        if (!params.streamId.isNullOrBlank()) {
-            queryParams.add("streamid=${params.streamId}")
+
+        // Always include streamid so RootEncoder sends it in the SRT handshake.
+        // Without this, RootEncoder falls back to getFullPath() which returns the
+        // entire query string (e.g. "mode=caller&latency=120") as the stream_id,
+        // causing servers to reject the connection as "not a publish request".
+        val streamId = if (!params.streamId.isNullOrBlank()) {
+            params.streamId
+        } else {
+            DEFAULT_SRT_STREAM_ID
         }
+        queryParams.add("streamid=$streamId")
 
         if (queryParams.isNotEmpty()) {
             sb.append("?")

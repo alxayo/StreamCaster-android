@@ -1,6 +1,8 @@
 package com.port80.app.data
 
 import com.port80.app.data.model.EndpointProfile
+import com.port80.app.data.model.SrtMode
+import com.port80.app.data.model.VideoCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -127,5 +129,110 @@ class EndpointProfileSerializationTest {
 
         assertEquals("", restored.username)
         assertEquals("", restored.password)
+    }
+
+    // ── SRT fields ──────────────────────────────────────────────────
+
+    private val srtProfile = EndpointProfile(
+        id = "uuid-srt",
+        name = "SRT Server",
+        url = "srt://192.168.0.12:10080",
+        streamKey = "",
+        videoCodec = VideoCodec.H265,
+        srtPassphrase = "mysecretpass10",
+        srtLatencyMs = 200,
+        srtMode = SrtMode.CALLER,
+        srtStreamId = "#!::m=publish,r=live/test"
+    )
+
+    @Test
+    fun `round-trip with all SRT fields populated`() {
+        val map = ProfileSerializer.toMap(srtProfile)
+        val restored = ProfileSerializer.fromMap(map)
+
+        assertEquals(srtProfile.id, restored.id)
+        assertEquals(srtProfile.name, restored.name)
+        assertEquals(srtProfile.url, restored.url)
+        assertEquals(VideoCodec.H265, restored.videoCodec)
+        assertEquals("mysecretpass10", restored.srtPassphrase)
+        assertEquals(200, restored.srtLatencyMs)
+        assertEquals(SrtMode.CALLER, restored.srtMode)
+        assertEquals("#!::m=publish,r=live/test", restored.srtStreamId)
+    }
+
+    @Test
+    fun `round-trip preserves videoCodec for RTMP profiles`() {
+        val profile = fullProfile.copy(videoCodec = VideoCodec.AV1)
+        val map = ProfileSerializer.toMap(profile)
+        val restored = ProfileSerializer.fromMap(map)
+
+        assertEquals(VideoCodec.AV1, restored.videoCodec)
+    }
+
+    @Test
+    fun `deserialization of legacy profile without SRT fields uses defaults`() {
+        val legacyMap = mapOf<String, Any?>(
+            "id" to "uuid-old",
+            "name" to "Old RTMP",
+            "url" to "rtmp://old.server/live",
+            "streamKey" to "key-old",
+            "username" to null,
+            "password" to null
+        )
+
+        val profile = ProfileSerializer.fromMap(legacyMap)
+
+        assertEquals(VideoCodec.H264, profile.videoCodec)
+        assertNull(profile.srtPassphrase)
+        assertEquals(120, profile.srtLatencyMs)
+        assertEquals(SrtMode.CALLER, profile.srtMode)
+        assertNull(profile.srtStreamId)
+    }
+
+    @Test
+    fun `deserialization handles unknown videoCodec gracefully`() {
+        val map = mapOf<String, Any?>(
+            "id" to "uuid-bad-codec",
+            "name" to "Bad Codec",
+            "url" to "rtmp://server/live",
+            "streamKey" to "key",
+            "videoCodec" to "VP9_NONEXISTENT"
+        )
+
+        val profile = ProfileSerializer.fromMap(map)
+        assertEquals(VideoCodec.H264, profile.videoCodec)
+    }
+
+    @Test
+    fun `SRT stream ID with special characters survives round-trip`() {
+        val profile = srtProfile.copy(srtStreamId = "#!::m=publish,r=live/stream key&extra=val")
+        val map = ProfileSerializer.toMap(profile)
+        val restored = ProfileSerializer.fromMap(map)
+
+        assertEquals(profile.srtStreamId, restored.srtStreamId)
+    }
+
+    @Test
+    fun `map contains SRT keys with correct values`() {
+        val map = ProfileSerializer.toMap(srtProfile)
+
+        assertEquals("H265", map["videoCodec"])
+        assertEquals("mysecretpass10", map["srtPassphrase"])
+        assertEquals(200, map["srtLatencyMs"])
+        assertEquals("CALLER", map["srtMode"])
+        assertEquals("#!::m=publish,r=live/test", map["srtStreamId"])
+    }
+
+    @Test
+    fun `null SRT optional fields survive round-trip`() {
+        val profile = srtProfile.copy(
+            srtPassphrase = null,
+            srtStreamId = null
+        )
+        val map = ProfileSerializer.toMap(profile)
+        val restored = ProfileSerializer.fromMap(map)
+
+        assertNull(restored.srtPassphrase)
+        assertNull(restored.srtStreamId)
     }
 }

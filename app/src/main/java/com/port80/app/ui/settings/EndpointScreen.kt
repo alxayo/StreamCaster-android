@@ -511,7 +511,10 @@ private fun EditProfileDialog(
                         value = srtStreamId,
                         onValueChange = { srtStreamId = it },
                         label = { Text("Stream ID (optional)") },
-                        placeholder = { Text("Server-side routing key") },
+                        placeholder = { Text("#!::m=publish,r=live/stream") },
+                        supportingText = {
+                            Text("SRT Access Control format. Defaults to publish mode if blank.")
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
