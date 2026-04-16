@@ -3,6 +3,7 @@ package com.port80.app.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.content.Intent
 import android.os.Binder
@@ -463,6 +464,14 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             stopForeground(true)
         }
         stopSelf()
+
+        // Restore camera preview if a surface is still attached (user is on the stream screen).
+        // The service stays alive due to BIND_AUTO_CREATE binding even after stopSelf().
+        // startPreviewOnly() runs async in serviceScope, so the UI sees the Stopped state
+        // briefly (long enough for error snackbars) before transitioning to Previewing.
+        if (currentSurface != null) {
+            startPreviewOnly()
+        }
     }
 
     private fun acquireWakeLock() {
@@ -630,8 +639,13 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     ): EncoderConfig {
         val resolution = settingsRepository.getResolution().first()
 
-        // Determine display orientation: portrait if height > width on the surface
-        val isPortrait = currentPreviewHeight > currentPreviewWidth
+        // Determine display orientation: portrait if height > width on the surface.
+        // Fallback to system configuration if surface dimensions haven't been reported yet.
+        val isPortrait = if (currentPreviewWidth > 0 || currentPreviewHeight > 0) {
+            currentPreviewHeight > currentPreviewWidth
+        } else {
+            resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        }
         val orientedWidth: Int
         val orientedHeight: Int
         val rotation: Int

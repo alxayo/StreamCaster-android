@@ -179,7 +179,49 @@ class OrientationTest {
         val surfaceWidth = 0
         val surfaceHeight = 0
 
+        // With the fallback logic, 0x0 triggers system configuration check.
+        // Without system config context, the derivation uses surface dims only.
         val isPortrait = surfaceHeight > surfaceWidth
         assertFalse(isPortrait)
+    }
+
+    @Test
+    fun `zero surface dimensions with portrait config fallback`() {
+        // Simulates the fallback path in buildEncoderConfig when surface dims are 0x0
+        // and resources.configuration.orientation reports PORTRAIT
+        val surfaceWidth = 0
+        val surfaceHeight = 0
+        val configOrientation = android.content.res.Configuration.ORIENTATION_PORTRAIT
+
+        val isPortrait = if (surfaceWidth > 0 || surfaceHeight > 0) {
+            surfaceHeight > surfaceWidth
+        } else {
+            configOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+        }
+        assertTrue("Should fall back to portrait from system configuration", isPortrait)
+
+        val resWidth = 1280
+        val resHeight = 720
+        val orientedWidth = if (isPortrait) minOf(resWidth, resHeight) else maxOf(resWidth, resHeight)
+        val orientedHeight = if (isPortrait) maxOf(resWidth, resHeight) else minOf(resWidth, resHeight)
+        val rotation = if (isPortrait) 90 else 0
+
+        assertEquals(720, orientedWidth)
+        assertEquals(1280, orientedHeight)
+        assertEquals(90, rotation)
+    }
+
+    @Test
+    fun `zero surface dimensions with landscape config fallback`() {
+        val surfaceWidth = 0
+        val surfaceHeight = 0
+        val configOrientation = android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+        val isPortrait = if (surfaceWidth > 0 || surfaceHeight > 0) {
+            surfaceHeight > surfaceWidth
+        } else {
+            configOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+        }
+        assertFalse("Should fall back to landscape from system configuration", isPortrait)
     }
 }
