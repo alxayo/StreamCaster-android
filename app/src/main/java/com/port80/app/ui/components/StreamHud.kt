@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.port80.app.data.model.StreamStats
+import com.port80.app.data.model.StreamState
 import com.port80.app.data.model.ThermalLevel
 
 /**
@@ -28,6 +29,7 @@ import com.port80.app.data.model.ThermalLevel
 fun StreamHud(
     stats: StreamStats,
     endpointName: String? = null,
+    reconnectState: StreamState.Reconnecting? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -48,8 +50,14 @@ fun StreamHud(
         // Center: duration
         HudText(formatDuration(stats.durationMs))
 
-        // Right side: endpoint name, protocol badge, codec badge, recording indicator, thermal badge
+        // Right side: reconnect badge, endpoint name, protocol badge, codec badge, recording indicator, thermal badge
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            reconnectState?.let { state ->
+                HudBadge(
+                    text = "RECONNECTING ${state.attempt + 1}/${state.maxAttempts}",
+                    color = Color(0xFFFF8800)
+                )
+            }
             endpointName?.let { name ->
                 HudBadge(text = name, color = Color.White)
             }

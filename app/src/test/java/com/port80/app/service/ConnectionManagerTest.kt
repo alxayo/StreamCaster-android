@@ -83,7 +83,7 @@ class ConnectionManagerTest {
         testScope.runCurrent()
 
         // First retry scheduled: 3s delay
-        assertEquals(StreamState.Reconnecting(0, 3_000L), stateChanges[0])
+        assertEquals(StreamState.Reconnecting(0, 3_000L, 10), stateChanges[0])
 
         // Timer fires → reconnect requested → simulate failure
         testScope.advanceTimeBy(3_000L)
@@ -92,7 +92,7 @@ class ConnectionManagerTest {
 
         connectionManager.notifyReconnectResult(false)
         testScope.runCurrent()
-        assertEquals(StreamState.Reconnecting(1, 6_000L), stateChanges[1])
+        assertEquals(StreamState.Reconnecting(1, 6_000L, 10), stateChanges[1])
 
         testScope.advanceTimeBy(6_000L)
         testScope.runCurrent()
@@ -100,26 +100,26 @@ class ConnectionManagerTest {
 
         connectionManager.notifyReconnectResult(false)
         testScope.runCurrent()
-        assertEquals(StreamState.Reconnecting(2, 12_000L), stateChanges[2])
+        assertEquals(StreamState.Reconnecting(2, 12_000L, 10), stateChanges[2])
 
         testScope.advanceTimeBy(12_000L)
         testScope.runCurrent()
         connectionManager.notifyReconnectResult(false)
         testScope.runCurrent()
-        assertEquals(StreamState.Reconnecting(3, 24_000L), stateChanges[3])
+        assertEquals(StreamState.Reconnecting(3, 24_000L, 10), stateChanges[3])
 
         testScope.advanceTimeBy(24_000L)
         testScope.runCurrent()
         connectionManager.notifyReconnectResult(false)
         testScope.runCurrent()
-        assertEquals(StreamState.Reconnecting(4, 48_000L), stateChanges[4])
+        assertEquals(StreamState.Reconnecting(4, 48_000L, 10), stateChanges[4])
 
         // Caps at 60s
         testScope.advanceTimeBy(48_000L)
         testScope.runCurrent()
         connectionManager.notifyReconnectResult(false)
         testScope.runCurrent()
-        assertEquals(StreamState.Reconnecting(5, 60_000L), stateChanges[5])
+        assertEquals(StreamState.Reconnecting(5, 60_000L, 10), stateChanges[5])
     }
 
     @Test
@@ -128,7 +128,7 @@ class ConnectionManagerTest {
         connectionManager.onConnectionLost()
         testScope.runCurrent()
 
-        assertEquals(StreamState.Reconnecting(0, 3_000L), stateChanges.last())
+        assertEquals(StreamState.Reconnecting(0, 3_000L, 10), stateChanges.last())
 
         // Auth failure arrives before the retry timer fires
         connectionManager.onAuthFailure()
@@ -149,7 +149,7 @@ class ConnectionManagerTest {
         connectionManager.onConnectionLost()
         testScope.runCurrent()
 
-        assertEquals(StreamState.Reconnecting(0, 3_000L), stateChanges.last())
+        assertEquals(StreamState.Reconnecting(0, 3_000L, 10), stateChanges.last())
 
         // User hits stop
         connectionManager.stop()
@@ -168,21 +168,21 @@ class ConnectionManagerTest {
         connectionManager.onConnectionLost()
         testScope.runCurrent()
 
-        assertEquals(StreamState.Reconnecting(0, 3_000L), stateChanges[0])
+        assertEquals(StreamState.Reconnecting(0, 3_000L, 10), stateChanges[0])
 
         // 1st retry fires → fail
         testScope.advanceTimeBy(3_000L)
         testScope.runCurrent()
         connectionManager.notifyReconnectResult(false)
         testScope.runCurrent()
-        assertEquals(StreamState.Reconnecting(1, 6_000L), stateChanges[1])
+        assertEquals(StreamState.Reconnecting(1, 6_000L, 10), stateChanges[1])
 
         // 2nd retry fires → fail
         testScope.advanceTimeBy(6_000L)
         testScope.runCurrent()
         connectionManager.notifyReconnectResult(false)
         testScope.runCurrent()
-        assertEquals(StreamState.Reconnecting(2, 12_000L), stateChanges[2])
+        assertEquals(StreamState.Reconnecting(2, 12_000L, 10), stateChanges[2])
 
         // 3rd retry fires → success!
         testScope.advanceTimeBy(12_000L)
@@ -195,7 +195,7 @@ class ConnectionManagerTest {
         connectionManager.onConnectionLost()
         testScope.runCurrent()
 
-        assertEquals(StreamState.Reconnecting(0, 3_000L), stateChanges.last())
+        assertEquals(StreamState.Reconnecting(0, 3_000L, 10), stateChanges.last())
     }
 
     @Test
@@ -204,7 +204,7 @@ class ConnectionManagerTest {
         connectionManager.onConnectionLost()
         testScope.runCurrent()
 
-        assertEquals(listOf(StreamState.Reconnecting(0, 3_000L)), stateChanges)
+        assertEquals(listOf(StreamState.Reconnecting(0, 3_000L, 10)), stateChanges)
 
         connectionManager.onConnectionLost()
         testScope.runCurrent()

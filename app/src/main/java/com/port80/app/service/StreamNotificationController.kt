@@ -87,7 +87,7 @@ class StreamNotificationController @Inject constructor(
             }
             is StreamState.Reconnecting -> {
                 builder.setContentTitle("Reconnecting...")
-                    .setContentText("Attempt ${state.attempt + 1} \u2022 Retry in ${state.nextRetryMs / 1000}s")
+                    .setContentText("Attempt ${state.attempt + 1}/${state.maxAttempts} \u2022 Retry in ${state.nextRetryMs / 1000}s")
                     .addAction(
                         android.R.drawable.ic_media_pause,
                         "Stop",

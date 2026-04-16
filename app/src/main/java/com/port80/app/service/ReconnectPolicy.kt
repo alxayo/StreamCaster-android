@@ -6,6 +6,9 @@ package com.port80.app.service
  * to avoid all clients reconnecting to the server at the same time.
  */
 interface ReconnectPolicy {
+    /** Total number of retry attempts before giving up. */
+    val maxAttempts: Int
+
     /**
      * Calculate how long to wait before the next retry attempt.
      * @param attempt retry attempt number (0 = first retry)
@@ -35,7 +38,7 @@ interface ReconnectPolicy {
 class ExponentialBackoffReconnectPolicy(
     private val baseDelayMs: Long = 3_000L,
     private val maxDelayMs: Long = 60_000L,
-    private val maxAttempts: Int = 10,
+    override val maxAttempts: Int = 10,
     private val jitterFactor: Double = 0.2
 ) : ReconnectPolicy {
 

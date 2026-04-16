@@ -33,9 +33,10 @@ class StreamStateTest {
 
     @Test
     fun `Reconnecting tracks attempt and delay`() {
-        val state = StreamState.Reconnecting(attempt = 3, nextRetryMs = 12000)
+        val state = StreamState.Reconnecting(attempt = 3, nextRetryMs = 12000, maxAttempts = 10)
         assertEquals(3, state.attempt)
         assertEquals(12000L, state.nextRetryMs)
+        assertEquals(10, state.maxAttempts)
     }
 
     @Test

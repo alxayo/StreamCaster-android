@@ -203,6 +203,7 @@ fun StreamScreen(
                     StreamHud(
                         stats = streamStats,
                         endpointName = activeEndpointName,
+                        reconnectState = streamState as? StreamState.Reconnecting,
                         modifier = Modifier.align(Alignment.TopCenter)
                     )
                 }
@@ -537,7 +538,7 @@ private fun ConnectionStateLabel(
         is StreamState.Previewing -> "Preview" to Color.White
         is StreamState.Connecting -> "Connecting…" to Color.Yellow
         is StreamState.Live -> "● LIVE" to Color.Red
-        is StreamState.Reconnecting -> "Reconnecting (${state.attempt})…" to Color(0xFFFF8800)
+        is StreamState.Reconnecting -> "Reconnecting ${state.attempt + 1}/${state.maxAttempts}" to Color(0xFFFF8800)
         is StreamState.Stopping -> "Stopping…" to Color.Yellow
         is StreamState.Stopped -> stoppedLabel(state.reason)
     }

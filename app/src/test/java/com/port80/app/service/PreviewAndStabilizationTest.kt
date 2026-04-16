@@ -181,7 +181,7 @@ class PreviewAndStabilizationTest {
             StreamState.Previewing("0"),
             StreamState.Connecting,
             StreamState.Live(),
-            StreamState.Reconnecting(0, 3000),
+            StreamState.Reconnecting(0, 3000, 10),
             StreamState.Stopping,
             StreamState.Stopped(com.port80.app.data.model.StopReason.USER_REQUEST)
         )

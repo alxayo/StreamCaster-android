@@ -36,8 +36,9 @@ sealed class StreamState {
      * Network connection was lost — trying to reconnect automatically.
      * @param attempt current retry attempt number (starts at 0)
      * @param nextRetryMs milliseconds until the next retry attempt
+     * @param maxAttempts total configured retry attempts before giving up
      */
-    data class Reconnecting(val attempt: Int, val nextRetryMs: Long) : StreamState()
+    data class Reconnecting(val attempt: Int, val nextRetryMs: Long, val maxAttempts: Int) : StreamState()
 
     /** Graceful shutdown is in progress (finalizing recording, closing connection). */
     data object Stopping : StreamState()

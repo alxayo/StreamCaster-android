@@ -160,7 +160,7 @@ class ConnectionManager(
         }
 
         val delayMs = reconnectPolicy.nextDelayMs(currentAttempt)
-        onStateChanged?.invoke(StreamState.Reconnecting(currentAttempt, delayMs))
+        onStateChanged?.invoke(StreamState.Reconnecting(currentAttempt, delayMs, reconnectPolicy.maxAttempts))
 
         retryJob?.cancel()
         retryJob = scope.launch {
