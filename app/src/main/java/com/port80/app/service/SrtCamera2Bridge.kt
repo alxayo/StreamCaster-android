@@ -147,6 +147,19 @@ class SrtCamera2Bridge(
         val srtUrl = buildSrtUrl(params)
         // Log without secrets — CredentialSanitizer handles passphrase redaction
         RedactingLogger.i(TAG, "Connecting to $srtUrl")
+
+        // Configure SRT encryption via RootEncoder's setPassphrase() API.
+        // This MUST happen before startStream() — RootEncoder does NOT parse
+        // passphrase from the URL; it requires explicit API configuration to
+        // include the KMREQ extension in the SRT conclusion handshake.
+        if (!params.passphrase.isNullOrBlank()) {
+            camera.getStreamClient().setPassphrase(
+                params.passphrase,
+                params.srtKeyLength.toRootEncoder()
+            )
+            RedactingLogger.d(TAG, "SRT encryption configured (${params.srtKeyLength.displayName()})")
+        }
+
         try {
             camera.startStream(srtUrl)
             RedactingLogger.d(TAG, "startStream() invoked on SRT encoder")
@@ -250,7 +263,11 @@ class SrtCamera2Bridge(
 
     /**
      * Build the SRT URL from typed parameters.
-     * Format: srt://host:port?mode=caller&latency=120&passphrase=X&streamid=Y
+     * Format: srt://host:port?mode=caller&latency=120&streamid=Y
+     *
+     * NOTE: Passphrase is NOT included in the URL. RootEncoder does not parse
+     * encryption params from the URL — encryption is configured separately via
+     * SrtStreamClient.setPassphrase() before startStream().
      *
      * Always includes `streamid=` to prevent RootEncoder from falling back to
      * using the full query string as the SRT handshake stream_id. If the user
@@ -262,10 +279,6 @@ class SrtCamera2Bridge(
 
         queryParams.add("mode=${params.mode.toUrlParam()}")
         queryParams.add("latency=${params.latencyMs}")
-
-        if (!params.passphrase.isNullOrBlank()) {
-            queryParams.add("passphrase=${params.passphrase}")
-        }
 
         // Always include streamid so RootEncoder sends it in the SRT handshake.
         // Without this, RootEncoder falls back to getFullPath() which returns the

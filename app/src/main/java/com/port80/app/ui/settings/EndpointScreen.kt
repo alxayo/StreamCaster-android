@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.port80.app.data.model.EndpointProfile
+import com.port80.app.data.model.SrtKeyLength
 import com.port80.app.data.model.SrtMode
 import com.port80.app.data.model.StreamProtocol
 import com.port80.app.data.model.VideoCodec
@@ -275,6 +276,7 @@ private fun EditProfileDialog(
 
     // SRT-specific fields
     var srtPassphrase by remember(profile.id) { mutableStateOf(profile.srtPassphrase ?: "") }
+    var srtKeyLength by remember(profile.id) { mutableStateOf(profile.srtKeyLength) }
     var srtLatencyMs by remember(profile.id) { mutableStateOf(profile.srtLatencyMs.toString()) }
     var srtMode by remember(profile.id) { mutableStateOf(profile.srtMode) }
     var srtStreamId by remember(profile.id) { mutableStateOf(profile.srtStreamId ?: "") }
@@ -463,6 +465,31 @@ private fun EditProfileDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    // AES key length (only shown when passphrase is set)
+                    if (srtPassphrase.isNotBlank()) {
+                        Text(
+                            text = "Encryption Key Length",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SrtKeyLength.entries.forEach { keyLen ->
+                                TextButton(onClick = { srtKeyLength = keyLen }) {
+                                    Text(
+                                        text = keyLen.displayName(),
+                                        color = if (srtKeyLength == keyLen) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
                     // Latency
                     OutlinedTextField(
                         value = srtLatencyMs,
@@ -534,6 +561,7 @@ private fun EditProfileDialog(
                             password = if (isSrt) null else password.trim().ifBlank { null },
                             videoCodec = videoCodec,
                             srtPassphrase = if (isSrt) srtPassphrase.trim().ifBlank { null } else null,
+                            srtKeyLength = if (isSrt) srtKeyLength else SrtKeyLength.AES_128,
                             srtLatencyMs = if (isSrt) (srtLatencyMs.toIntOrNull() ?: 120) else 120,
                             srtMode = if (isSrt) srtMode else SrtMode.CALLER,
                             srtStreamId = if (isSrt) srtStreamId.trim().ifBlank { null } else null,

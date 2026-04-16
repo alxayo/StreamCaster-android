@@ -27,6 +27,8 @@ data class EndpointProfile(
     val videoCodec: VideoCodec = VideoCodec.H264,
     /** SRT encryption passphrase (10–79 characters). Encrypted at rest. */
     val srtPassphrase: String? = null,
+    /** AES key length for SRT encryption. Only used when passphrase is set. */
+    val srtKeyLength: SrtKeyLength = SrtKeyLength.AES_128,
     /** SRT latency in milliseconds. Controls buffering/delay tradeoff. */
     val srtLatencyMs: Int = 120,
     /** SRT connection mode. Caller is standard; listener/rendezvous are experimental. */

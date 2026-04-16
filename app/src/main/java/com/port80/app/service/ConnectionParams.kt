@@ -1,5 +1,6 @@
 package com.port80.app.service
 
+import com.port80.app.data.model.SrtKeyLength
 import com.port80.app.data.model.SrtMode
 import com.port80.app.data.model.VideoCodec
 
@@ -35,6 +36,8 @@ sealed class ConnectionParams {
         val port: Int,
         /** Encryption passphrase (10–79 chars), or null for unencrypted. */
         val passphrase: String?,
+        /** AES key length for encryption. Only used when passphrase is set. */
+        val srtKeyLength: SrtKeyLength = SrtKeyLength.AES_128,
         /** Link latency in milliseconds. */
         val latencyMs: Int,
         /** Connection mode: caller, listener, or rendezvous. */

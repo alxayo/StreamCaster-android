@@ -1,5 +1,6 @@
 package com.port80.app.service
 
+import com.port80.app.data.model.SrtKeyLength
 import com.port80.app.data.model.SrtMode
 import com.port80.app.data.model.VideoCodec
 import org.junit.Assert.*
@@ -29,6 +30,7 @@ class ConnectionParamsTest {
             host = "srt.example.com",
             port = 9000,
             passphrase = "secret",
+            srtKeyLength = SrtKeyLength.AES_256,
             latencyMs = 200,
             mode = SrtMode.LISTENER,
             streamId = "stream1",
@@ -37,6 +39,7 @@ class ConnectionParamsTest {
         assertEquals("srt.example.com", params.host)
         assertEquals(9000, params.port)
         assertEquals("secret", params.passphrase)
+        assertEquals(SrtKeyLength.AES_256, params.srtKeyLength)
         assertEquals(200, params.latencyMs)
         assertEquals(SrtMode.LISTENER, params.mode)
         assertEquals("stream1", params.streamId)
@@ -46,6 +49,16 @@ class ConnectionParamsTest {
     @Test
     fun `Srt default latency is 120`() {
         assertEquals(120, ConnectionParams.Srt.DEFAULT_LATENCY_MS)
+    }
+
+    @Test
+    fun `Srt srtKeyLength defaults to AES_128`() {
+        val params = ConnectionParams.Srt(
+            host = "h", port = 9000, passphrase = null,
+            latencyMs = 120, mode = SrtMode.CALLER,
+            streamId = null, videoCodec = VideoCodec.H264,
+        )
+        assertEquals(SrtKeyLength.AES_128, params.srtKeyLength)
     }
 
     @Test

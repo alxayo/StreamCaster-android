@@ -543,6 +543,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             host = parseSrtHost(profile.url),
             port = parseSrtPort(profile.url),
             passphrase = profile.srtPassphrase,
+            srtKeyLength = profile.srtKeyLength,
             latencyMs = profile.srtLatencyMs,
             mode = profile.srtMode,
             streamId = profile.srtStreamId,

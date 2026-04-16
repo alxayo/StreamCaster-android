@@ -6,6 +6,7 @@ import com.port80.app.util.RedactingLogger
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.port80.app.data.model.EndpointProfile
+import com.port80.app.data.model.SrtKeyLength
 import com.port80.app.data.model.SrtMode
 import com.port80.app.data.model.VideoCodec
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -214,6 +215,7 @@ internal object ProfileSerializer {
     private const val KEY_PASSWORD = "password"
     private const val KEY_VIDEO_CODEC = "videoCodec"
     private const val KEY_SRT_PASSPHRASE = "srtPassphrase"
+    private const val KEY_SRT_KEY_LENGTH = "srtKeyLength"
     private const val KEY_SRT_LATENCY_MS = "srtLatencyMs"
     private const val KEY_SRT_MODE = "srtMode"
     private const val KEY_SRT_STREAM_ID = "srtStreamId"
@@ -228,6 +230,7 @@ internal object ProfileSerializer {
         put(KEY_PASSWORD, profile.password)
         put(KEY_VIDEO_CODEC, profile.videoCodec.name)
         put(KEY_SRT_PASSPHRASE, profile.srtPassphrase)
+        put(KEY_SRT_KEY_LENGTH, profile.srtKeyLength.name)
         put(KEY_SRT_LATENCY_MS, profile.srtLatencyMs)
         put(KEY_SRT_MODE, profile.srtMode.name)
         put(KEY_SRT_STREAM_ID, profile.srtStreamId)
@@ -246,6 +249,7 @@ internal object ProfileSerializer {
             runCatching { VideoCodec.valueOf(it) }.getOrNull()
         } ?: VideoCodec.H264,
         srtPassphrase = map[KEY_SRT_PASSPHRASE] as? String,
+        srtKeyLength = (map[KEY_SRT_KEY_LENGTH] as? String)?.let { SrtKeyLength.fromString(it) } ?: SrtKeyLength.AES_128,
         srtLatencyMs = (map[KEY_SRT_LATENCY_MS] as? Number)?.toInt() ?: 120,
         srtMode = (map[KEY_SRT_MODE] as? String)?.let { SrtMode.fromString(it) } ?: SrtMode.CALLER,
         srtStreamId = map[KEY_SRT_STREAM_ID] as? String,

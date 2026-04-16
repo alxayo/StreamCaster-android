@@ -1,6 +1,7 @@
 package com.port80.app.data
 
 import com.port80.app.data.model.EndpointProfile
+import com.port80.app.data.model.SrtKeyLength
 import com.port80.app.data.model.SrtMode
 import com.port80.app.data.model.VideoCodec
 import org.junit.Assert.assertEquals
@@ -140,6 +141,7 @@ class EndpointProfileSerializationTest {
         streamKey = "",
         videoCodec = VideoCodec.H265,
         srtPassphrase = "mysecretpass10",
+        srtKeyLength = SrtKeyLength.AES_256,
         srtLatencyMs = 200,
         srtMode = SrtMode.CALLER,
         srtStreamId = "#!::m=publish,r=live/test"
@@ -155,6 +157,7 @@ class EndpointProfileSerializationTest {
         assertEquals(srtProfile.url, restored.url)
         assertEquals(VideoCodec.H265, restored.videoCodec)
         assertEquals("mysecretpass10", restored.srtPassphrase)
+        assertEquals(SrtKeyLength.AES_256, restored.srtKeyLength)
         assertEquals(200, restored.srtLatencyMs)
         assertEquals(SrtMode.CALLER, restored.srtMode)
         assertEquals("#!::m=publish,r=live/test", restored.srtStreamId)
@@ -184,6 +187,7 @@ class EndpointProfileSerializationTest {
 
         assertEquals(VideoCodec.H264, profile.videoCodec)
         assertNull(profile.srtPassphrase)
+        assertEquals(SrtKeyLength.AES_128, profile.srtKeyLength)
         assertEquals(120, profile.srtLatencyMs)
         assertEquals(SrtMode.CALLER, profile.srtMode)
         assertNull(profile.srtStreamId)
@@ -218,6 +222,7 @@ class EndpointProfileSerializationTest {
 
         assertEquals("H265", map["videoCodec"])
         assertEquals("mysecretpass10", map["srtPassphrase"])
+        assertEquals("AES_256", map["srtKeyLength"])
         assertEquals(200, map["srtLatencyMs"])
         assertEquals("CALLER", map["srtMode"])
         assertEquals("#!::m=publish,r=live/test", map["srtStreamId"])
