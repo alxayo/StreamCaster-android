@@ -35,7 +35,7 @@ interface ReconnectPolicy {
 class ExponentialBackoffReconnectPolicy(
     private val baseDelayMs: Long = 3_000L,
     private val maxDelayMs: Long = 60_000L,
-    private val maxAttempts: Int = Int.MAX_VALUE,
+    private val maxAttempts: Int = 10,
     private val jitterFactor: Double = 0.2
 ) : ReconnectPolicy {
 

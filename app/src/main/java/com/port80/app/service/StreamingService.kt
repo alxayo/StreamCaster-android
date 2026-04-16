@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
 /**
@@ -97,6 +98,9 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     // -- CPU wake lock: keeps the CPU running while streaming in background --
     private var wakeLock: PowerManager.WakeLock? = null
+
+    // -- Termination guard: prevents duplicate cleanup from overlapping callbacks --
+    private val isTerminating = AtomicBoolean(false)
 
     // -- Stats ticker: updates durationMs at ~1 Hz while streaming --
     private var streamStartTimeMs: Long = 0L
@@ -168,6 +172,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         _streamState.value = StreamState.Connecting
         _lastFailureDetail.value = null
         _streamStats.value = StreamStats()
+        isTerminating.set(false)
         previewResizeJob?.cancel()
         previewResizeJob = null
         RedactingLogger.i(TAG, "Starting stream with profile: $profileId")
@@ -191,18 +196,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
         RedactingLogger.i(TAG, "Stopping stream (user request)")
         _streamState.value = StreamState.Stopping
-
-        serviceScope.launch {
-            cleanupAndStop()
-            _streamState.value = StreamState.Stopped(StopReason.USER_REQUEST)
-            @Suppress("DEPRECATION")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } else {
-                stopForeground(true)
-            }
-            stopSelf()
-        }
+        terminateService(StopReason.USER_REQUEST)
     }
 
     override fun toggleMute() {
@@ -431,6 +425,30 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         }
     }
 
+    /**
+     * Full service termination: clean up resources, update state, and stop the FGS.
+     * Idempotent via AtomicBoolean CAS — safe to call from overlapping callbacks.
+     * The guard stays set until a new stream session starts (see [startStream]).
+     */
+    private fun terminateService(reason: StopReason) {
+        if (!isTerminating.compareAndSet(false, true)) {
+            RedactingLogger.d(TAG, "terminateService($reason) skipped — already terminating")
+            return
+        }
+        RedactingLogger.i(TAG, "Terminating service: $reason")
+
+        cleanupAndStop()
+        _streamState.value = StreamState.Stopped(reason)
+
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            stopForeground(true)
+        }
+        stopSelf()
+    }
+
     private fun acquireWakeLock() {
         if (wakeLock == null) {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
@@ -476,7 +494,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             val profile = profileRepository.getById(profileId)
             if (profile == null) {
                 RedactingLogger.e(TAG, "Profile not found: $profileId")
-                _streamState.value = StreamState.Stopped(StopReason.ERROR_PROFILE)
+                terminateService(StopReason.ERROR_PROFILE)
                 return
             }
 
@@ -485,7 +503,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             if (protocol == StreamProtocol.SRT && !profile.videoCodec.supportsSrt()) {
                 RedactingLogger.e(TAG, "Codec ${profile.videoCodec} is not supported over SRT")
                 _lastFailureDetail.value = "AV1 codec is not supported over SRT. Use H.264 or H.265."
-                _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
+                terminateService(StopReason.ERROR_ENCODER)
                 return
             }
 
@@ -524,7 +542,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             RedactingLogger.e(TAG, "Failed to start stream", e)
             _lastFailureDetail.value =
                 "Could not start streaming: ${e.javaClass.simpleName}. Check camera/audio permissions and try again."
-            _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
+            terminateService(StopReason.ERROR_ENCODER)
         }
     }
 
@@ -692,9 +710,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         RedactingLogger.e(TAG, "RTMP connection failed: $reason")
         _lastFailureDetail.value = StreamFailureMapper.buildFailureDetail(reason)
         val stopReason = StreamFailureMapper.mapFailureReason(reason)
-        serviceScope.launch {
-            _streamState.value = StreamState.Stopped(stopReason)
-        }
+        terminateService(stopReason)
     }
 
     override fun onNewBitrate(bitrate: Long) {
@@ -711,12 +727,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         if (previousState is StreamState.Live || previousState is StreamState.Reconnecting) {
             _lastFailureDetail.value =
                 "Connection to server was lost. Check network stability and server availability, then retry."
-        }
-        // ConnectionManager will drive reconnect; for now surface a stopped state.
-        serviceScope.launch {
-            if (_streamState.value is StreamState.Live || _streamState.value is StreamState.Reconnecting) {
-                _streamState.value = StreamState.Stopped(StopReason.ERROR_ENCODER)
-            }
+            terminateService(StopReason.ERROR_ENCODER)
         }
     }
 
@@ -724,9 +735,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         RedactingLogger.e(TAG, "RTMP auth error — wrong stream key or credentials")
         _lastFailureDetail.value =
             "Authentication rejected by the server. Verify stream key/username/password in endpoint settings."
-        serviceScope.launch {
-            _streamState.value = StreamState.Stopped(StopReason.ERROR_AUTH)
-        }
+        terminateService(StopReason.ERROR_AUTH)
     }
 
     override fun onAuthSuccess() {
