@@ -3,6 +3,7 @@ package com.port80.app.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.net.ConnectivityManager
 import android.content.Intent
 import android.os.Binder
 import android.os.Build
@@ -104,7 +105,15 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     // -- Stats ticker: updates durationMs at ~1 Hz while streaming --
     private var streamStartTimeMs: Long = 0L
+    private var accumulatedDurationMs: Long = 0L
     private var statsTickerJob: Job? = null
+
+    // -- Reconnect: stores active session params for reconnect attempts --
+    private var activeConnectionParams: ConnectionParams? = null
+    private var activeEncoderConfig: EncoderConfig? = null
+    private var activeAutoReconnect: Boolean = false
+    private var activeMaxReconnectAttempts: Int = 10
+    private var connectionManager: ConnectionManager? = null
 
     // -- Binder for Activity/ViewModel to communicate with this service --
     inner class LocalBinder : Binder() {
@@ -149,6 +158,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     override fun onDestroy() {
         RedactingLogger.d(TAG, "Service destroying - cleaning up")
+        connectionManager?.stop()
         cleanupAndStop()
         serviceScope.cancel()
         super.onDestroy()
@@ -181,7 +191,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     }
 
     override fun stopStream() {
-        // Idempotent: only stop if we're actually streaming, connecting, or previewing
+        // Idempotent: only stop if we're actually streaming, connecting, reconnecting, or previewing
         val currentState = _streamState.value
         if (currentState == StreamState.Idle || currentState is StreamState.Stopped) {
             RedactingLogger.d(TAG, "stopStream ignored - already in state: $currentState")
@@ -195,6 +205,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         }
 
         RedactingLogger.i(TAG, "Stopping stream (user request)")
+        connectionManager?.stop()
         _streamState.value = StreamState.Stopping
         terminateService(StopReason.USER_REQUEST)
     }
@@ -410,9 +421,14 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
     /** Clean up all streaming resources. */
     private fun cleanupAndStop() {
+        connectionManager?.stop()
+        connectionManager = null
+        activeConnectionParams = null
+        activeEncoderConfig = null
         previewResizeJob?.cancel()
         previewResizeJob = null
         stopStatsTicker()
+        accumulatedDurationMs = 0L
         releaseWakeLock()
         cameraSwitcher = null
         activeStabilizationMode = StabilizationMode.OFF
@@ -475,10 +491,29 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     private fun startStatsTicker() {
         statsTickerJob?.cancel()
         streamStartTimeMs = System.currentTimeMillis()
+        accumulatedDurationMs = 0L
         statsTickerJob = serviceScope.launch {
             while (true) {
                 delay(1_000L)
-                val elapsed = System.currentTimeMillis() - streamStartTimeMs
+                val elapsed = accumulatedDurationMs + (System.currentTimeMillis() - streamStartTimeMs)
+                _streamStats.value = _streamStats.value.copy(durationMs = elapsed)
+            }
+        }
+    }
+
+    private fun pauseStatsTicker() {
+        statsTickerJob?.cancel()
+        statsTickerJob = null
+        accumulatedDurationMs += System.currentTimeMillis() - streamStartTimeMs
+    }
+
+    private fun resumeStatsTicker() {
+        statsTickerJob?.cancel()
+        streamStartTimeMs = System.currentTimeMillis()
+        statsTickerJob = serviceScope.launch {
+            while (true) {
+                delay(1_000L)
+                val elapsed = accumulatedDurationMs + (System.currentTimeMillis() - streamStartTimeMs)
                 _streamStats.value = _streamStats.value.copy(durationMs = elapsed)
             }
         }
@@ -534,6 +569,12 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
             val connectionParams = buildConnectionParams(profile, protocol)
             val encoderConfig = buildEncoderConfig(profile)
+
+            // Store for reconnect
+            activeConnectionParams = connectionParams
+            activeEncoderConfig = encoderConfig
+            activeAutoReconnect = settingsRepository.getAutoReconnectEnabled().first()
+            activeMaxReconnectAttempts = settingsRepository.getMaxReconnectAttempts().first()
 
             RedactingLogger.d(TAG, "startStream(): invoking encoderBridge.connect()")
             acquireWakeLock()
@@ -697,20 +738,45 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     }
 
     override fun onConnectionSuccess() {
-        RedactingLogger.i(TAG, "RTMP connection succeeded — stream is live")
+        RedactingLogger.i(TAG, "Connection succeeded — stream is live")
         _lastFailureDetail.value = null
-        _streamState.value = StreamState.Live()
-        startStatsTicker()
+
+        val cm = connectionManager
+        if (cm != null && cm.isReconnecting) {
+            // Returning to Live after a reconnect attempt
+            cm.notifyReconnectResult(true)
+            _streamState.value = StreamState.Live()
+            resumeStatsTicker()
+        } else {
+            // Initial connection — create and start ConnectionManager
+            _streamState.value = StreamState.Live()
+            startStatsTicker()
+            createAndStartConnectionManager()
+        }
+
         encoderBridge?.setFpsListener { fps ->
             _streamStats.value = _streamStats.value.copy(fps = fps.toFloat())
         }
     }
 
     override fun onConnectionFailed(reason: String) {
-        RedactingLogger.e(TAG, "RTMP connection failed: $reason")
+        RedactingLogger.e(TAG, "Connection failed: $reason")
         _lastFailureDetail.value = StreamFailureMapper.buildFailureDetail(reason)
         val stopReason = StreamFailureMapper.mapFailureReason(reason)
-        terminateService(stopReason)
+
+        val cm = connectionManager
+        val currentState = _streamState.value
+
+        if (cm != null && StreamFailureMapper.isRetryable(reason) &&
+            (currentState is StreamState.Reconnecting)
+        ) {
+            // A reconnect attempt failed — notify CM to schedule next retry
+            cm.notifyReconnectResult(false)
+        } else {
+            // Non-retryable, or initial connection, or no CM — terminate
+            cm?.stop()
+            terminateService(stopReason)
+        }
     }
 
     override fun onNewBitrate(bitrate: Long) {
@@ -724,7 +790,16 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             TAG,
             "Disconnected (previousState=$previousState, encoderStreaming=${encoderBridge?.isStreaming() == true})"
         )
-        if (previousState is StreamState.Live || previousState is StreamState.Reconnecting) {
+
+        val cm = connectionManager
+        if (previousState is StreamState.Live && activeAutoReconnect && cm != null) {
+            // Mid-stream drop with auto-reconnect enabled — delegate to ConnectionManager
+            pauseStatsTicker()
+            cm.onConnectionLost()
+        } else if (previousState is StreamState.Reconnecting && cm != null) {
+            // A reconnect attempt itself disconnected — notify CM of failure
+            cm.notifyReconnectResult(false)
+        } else if (previousState is StreamState.Live || previousState is StreamState.Reconnecting) {
             _lastFailureDetail.value =
                 "Connection to server was lost. Check network stability and server availability, then retry."
             terminateService(StopReason.ERROR_ENCODER)
@@ -735,11 +810,59 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         RedactingLogger.e(TAG, "RTMP auth error — wrong stream key or credentials")
         _lastFailureDetail.value =
             "Authentication rejected by the server. Verify stream key/username/password in endpoint settings."
+        connectionManager?.stop()
         terminateService(StopReason.ERROR_AUTH)
     }
 
     override fun onAuthSuccess() {
         RedactingLogger.d(TAG, "RTMP auth succeeded")
+    }
+
+    // ==========================================================
+    // Auto-Reconnect
+    // ==========================================================
+
+    private fun createAndStartConnectionManager() {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+
+        val policy = ExponentialBackoffReconnectPolicy(maxAttempts = activeMaxReconnectAttempts)
+
+        connectionManager = ConnectionManager(
+            connectivityManager = cm,
+            powerManager = pm,
+            reconnectPolicy = policy,
+            scope = serviceScope
+        ).apply {
+            requestReconnect = { attemptReconnect() }
+            onReconnectExhausted = { reason -> terminateService(reason) }
+            onStateChanged = { state -> _streamState.value = state }
+        }
+        connectionManager?.start()
+    }
+
+    private fun attemptReconnect() {
+        val params = activeConnectionParams ?: run {
+            RedactingLogger.e(TAG, "attemptReconnect: no stored connection params")
+            terminateService(StopReason.ERROR_ENCODER)
+            return
+        }
+        val config = activeEncoderConfig ?: run {
+            RedactingLogger.e(TAG, "attemptReconnect: no stored encoder config")
+            terminateService(StopReason.ERROR_ENCODER)
+            return
+        }
+        serviceScope.launch {
+            try {
+                RedactingLogger.i(TAG, "Attempting reconnect...")
+                encoderBridge?.disconnect()
+                encoderBridge?.connect(params, config)
+                // Success/failure comes via ConnectChecker callbacks
+            } catch (e: Exception) {
+                RedactingLogger.e(TAG, "Reconnect attempt threw exception", e)
+                connectionManager?.notifyReconnectResult(false)
+            }
+        }
     }
 
     /** Create the notification channel (required on Android 8.0+). */

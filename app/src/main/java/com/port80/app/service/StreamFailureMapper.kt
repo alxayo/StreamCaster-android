@@ -18,6 +18,27 @@ object StreamFailureMapper {
         }
     }
 
+    /**
+     * Whether a connection failure is potentially recoverable via reconnect.
+     * Non-retryable: auth, camera, audio, encoder preparation failures.
+     * Retryable: network timeouts, server refused, unreachable, generic IO errors.
+     */
+    fun isRetryable(reason: String): Boolean {
+        val normalized = reason.uppercase()
+        // Auth failures are permanent — wrong credentials
+        if ("AUTH" in normalized) return false
+        // Camera/audio errors are local device issues
+        if ("AUDIO" in normalized) return false
+        if ("CAMERA" in normalized || "PREVIEW" in normalized) return false
+        // Encoder preparation failures are device capability issues
+        if ("ENCODER_PREP" in normalized) return false
+        if ("CAMERA_NOT_INIT" in normalized) return false
+        // Malformed endpoint URL is a configuration error
+        if ("MALFORMED" in normalized) return false
+        // Everything else (timeout, refused, unreachable, IO errors) is retryable
+        return true
+    }
+
     fun buildFailureDetail(reason: String): String {
         val sanitizedReason = CredentialSanitizer.sanitize(reason)
         val normalized = sanitizedReason.uppercase()

@@ -51,6 +51,10 @@ class DataStoreSettingsRepository @Inject constructor(
         // Stabilization
         val KEY_STABILIZATION_MODE = stringPreferencesKey("stabilization_mode")
 
+        // Reconnect
+        val KEY_AUTO_RECONNECT_ENABLED = booleanPreferencesKey("auto_reconnect_enabled")
+        val KEY_MAX_RECONNECT_ATTEMPTS = intPreferencesKey("max_reconnect_attempts")
+
         // Defaults
         const val DEFAULT_RESOLUTION_WIDTH = 1280
         const val DEFAULT_RESOLUTION_HEIGHT = 720
@@ -69,6 +73,8 @@ class DataStoreSettingsRepository @Inject constructor(
         const val DEFAULT_LOCAL_RECORDING_ENABLED = false
         const val DEFAULT_KEEP_SCREEN_ON = true
         const val DEFAULT_STABILIZATION_MODE = "OFF"
+        const val DEFAULT_AUTO_RECONNECT_ENABLED = true
+        const val DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
     }
 
     // ── Video settings ──
@@ -222,5 +228,23 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setStabilizationMode(mode: StabilizationMode) {
         dataStore.edit { prefs -> prefs[KEY_STABILIZATION_MODE] = mode.name }
+    }
+
+    // ── Reconnect settings ──
+
+    override fun getAutoReconnectEnabled(): Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_RECONNECT_ENABLED] ?: DEFAULT_AUTO_RECONNECT_ENABLED
+    }
+
+    override suspend fun setAutoReconnectEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_AUTO_RECONNECT_ENABLED] = enabled }
+    }
+
+    override fun getMaxReconnectAttempts(): Flow<Int> = dataStore.data.map { prefs ->
+        prefs[KEY_MAX_RECONNECT_ATTEMPTS] ?: DEFAULT_MAX_RECONNECT_ATTEMPTS
+    }
+
+    override suspend fun setMaxReconnectAttempts(max: Int) {
+        dataStore.edit { prefs -> prefs[KEY_MAX_RECONNECT_ATTEMPTS] = max }
     }
 }

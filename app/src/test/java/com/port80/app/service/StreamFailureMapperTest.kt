@@ -2,6 +2,8 @@ package com.port80.app.service
 
 import com.port80.app.data.model.StopReason
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StreamFailureMapperTest {
@@ -40,5 +42,38 @@ class StreamFailureMapperTest {
         // We expect generic message, not the URL
         assert(detail.contains("Could not connect"))
         assert(!detail.contains("secret:key"))
+    }
+
+    @Test
+    fun `isRetryable returns false for auth errors`() {
+        assertFalse(StreamFailureMapper.isRetryable("Auth failed"))
+        assertFalse(StreamFailureMapper.isRetryable("Authentication rejected"))
+    }
+
+    @Test
+    fun `isRetryable returns false for camera errors`() {
+        assertFalse(StreamFailureMapper.isRetryable("Camera disconnected"))
+        assertFalse(StreamFailureMapper.isRetryable("Preview surface invalid"))
+    }
+
+    @Test
+    fun `isRetryable returns false for audio errors`() {
+        assertFalse(StreamFailureMapper.isRetryable("Audio frame unavailable"))
+        assertFalse(StreamFailureMapper.isRetryable("Microphone audio error"))
+    }
+
+    @Test
+    fun `isRetryable returns false for encoder prep and camera init`() {
+        assertFalse(StreamFailureMapper.isRetryable("ENCODER_PREP_FAILED"))
+        assertFalse(StreamFailureMapper.isRetryable("CAMERA_NOT_INITIALIZED"))
+        assertFalse(StreamFailureMapper.isRetryable("Malformed URL"))
+    }
+
+    @Test
+    fun `isRetryable returns true for network errors`() {
+        assertTrue(StreamFailureMapper.isRetryable("Connection refused"))
+        assertTrue(StreamFailureMapper.isRetryable("Network unreachable"))
+        assertTrue(StreamFailureMapper.isRetryable("java.net.SocketTimeoutException"))
+        assertTrue(StreamFailureMapper.isRetryable("Unknown error"))
     }
 }

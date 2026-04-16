@@ -64,4 +64,11 @@ interface SettingsRepository {
     // ── Stabilization settings ──
     fun getStabilizationMode(): Flow<StabilizationMode>
     suspend fun setStabilizationMode(mode: StabilizationMode)
+
+    // ── Reconnect settings ──
+    fun getAutoReconnectEnabled(): Flow<Boolean>
+    suspend fun setAutoReconnectEnabled(enabled: Boolean)
+
+    fun getMaxReconnectAttempts(): Flow<Int>
+    suspend fun setMaxReconnectAttempts(max: Int)
 }
