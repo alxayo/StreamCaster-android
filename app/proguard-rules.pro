@@ -59,6 +59,16 @@
 -dontwarn com.google.crypto.tink.**
 
 
+# ── ML Kit barcode scanner (QR endpoint import) ─────────────────────────────
+# The QR scanner uses Google's bundled barcode model. ML Kit loads model and
+# barcode classes dynamically, so these rules keep release builds from removing
+# pieces that look unused to R8 but are needed at runtime.
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+-dontwarn com.google.mlkit.**
+-dontwarn com.google.android.gms.internal.mlkit_vision_barcode.**
+
+
 # ── Data Models (serialization) ──────────────────────────────────────────────
 # These are the app's data classes (EndpointProfile, StreamConfig, etc.).
 # They may be serialized/deserialized by DataStore or passed across process

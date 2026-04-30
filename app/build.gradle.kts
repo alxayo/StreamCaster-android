@@ -106,6 +106,15 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
 
+    // ── QR endpoint import scanner ──
+    // CameraX is used only for the short-lived QR scanner in Settings. The
+    // streaming camera path still belongs to RootEncoder/RtmpCamera2.
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+    implementation(libs.mlkit.barcode.scanning)
+
     // ── RootEncoder for RTMP streaming ──
     implementation(libs.rootencoder)
 

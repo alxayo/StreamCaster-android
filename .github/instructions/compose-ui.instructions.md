@@ -18,6 +18,12 @@ description: "Use when working on Compose UI screens, ViewModels, camera preview
 - On `surfaceDestroyed()`: call `detachPreviewSurface()` and reset the `CompletableDeferred`.
 - Hold `SurfaceHolder` as `WeakReference` in ViewModel. Never retain strong `View`/`Surface`/`Activity` references.
 
+## QR Scanner Exception
+
+- The endpoint-import QR scanner is the only Compose UI that may use CameraX (`PreviewView`) and bundled ML Kit barcode scanning.
+- Keep this scanner isolated from streaming preview code. Do not route CameraX frames into `StreamingService`, `EncoderBridge`, or RootEncoder.
+- The QR scanner must be opened only from an explicit user action and must be blocked while `ActiveStreamStateProvider.isStreamActive` is true.
+
 ## Layout
 
 - **Landscape-first** — controls at the right edge for thumb reach.
@@ -32,6 +38,7 @@ description: "Use when working on Compose UI screens, ViewModels, camera preview
 ## Permissions
 
 - Request `CAMERA`, `RECORD_AUDIO` at stream start (not app launch).
+- For QR endpoint import, request only `CAMERA` and only after the user chooses Scan QR.
 - Request `POST_NOTIFICATIONS` on API 33+ before starting FGS.
 - Show rationale dialogs on denial. Offer mode fallback (e.g., audio-only if camera denied).
 

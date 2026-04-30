@@ -13,7 +13,7 @@
 - **MVVM** with Hilt DI, Jetpack Compose UI, Android ViewModel + StateFlow.
 - **Single Activity** (`MainActivity`) with Compose Navigation.
 - **StreamingService** (foreground service) is the **single source of truth** for all stream state. UI is a read-only observer.
-- **RtmpCamera2** (from RootEncoder) is the **sole camera owner**. Never use CameraX or Camera1. `DeviceCapabilityQuery` reads camera/codec info but never opens the camera.
+- **RtmpCamera2** (from RootEncoder) is the **sole camera owner** for streaming and preview. Never use CameraX or Camera1 for the streaming camera path. The only approved exception is the QR endpoint-import scanner, which may use CameraX while no stream is active.
 - All encoder quality changes (ABR and thermal) are serialized through `EncoderController` using a coroutine `Mutex`. Never call `MediaCodec.release()`/`configure()`/`start()` outside of `EncoderController`.
 
 ## Source of Truth Boundaries
@@ -24,6 +24,14 @@
 | User settings | `SettingsRepository` | Jetpack DataStore |
 | Credentials & profiles | `EndpointProfileRepository` | EncryptedSharedPreferences (Keystore-backed) |
 | Device capabilities | `DeviceCapabilityQuery` | Read-only queries to Camera2 + MediaCodecList |
+| Active-stream gate for QR scanning | `StreamingService` via `ActiveStreamStateProvider` | In-memory `StateFlow<Boolean>` |
+
+## QR Scanner Exception
+
+- QR endpoint import may use CameraX and bundled ML Kit barcode scanning (`com.google.mlkit:barcode-scanning`) in both `foss` and `gms` flavors.
+- This exception is limited to the settings endpoint-import scanner. Streaming, preview, encoder setup, and service code must continue to use RootEncoder's `RtmpCamera2` path.
+- QR scanning must be blocked while a stream or preview-owned camera session is active. The scanner reads `ActiveStreamStateProvider` and never opens the streaming camera.
+- Bundled ML Kit is intentionally accepted in the `foss` flavor for offline QR scanning. It is not the same as adding Play Services runtime APIs, and `play-services-*` dependencies remain forbidden in `foss`.
 
 ## Security — Hard Rules
 
@@ -66,8 +74,8 @@ Always branch on `Build.VERSION.SDK_INT` for API-conditional behavior:
 # Unit tests
 ./gradlew testFossDebugUnitTest
 
-# F-Droid GMS check (must return zero matches)
-./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms
+# F-Droid GMS check: bundled ML Kit is allowlisted, but play-services-* must not appear
+./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"
 
 # Instrumented tests
 ./gradlew connectedFossDebugAndroidTest
