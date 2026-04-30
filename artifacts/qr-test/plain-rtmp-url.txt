@@ -1,0 +1,1 @@
+rtmp://192.168.0.12:1935/live/plain_qr_key

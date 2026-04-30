@@ -1,0 +1,1 @@
+{"v":1,"name":"Test RTMPS Main","url":"rtmps://live.example.com/app/test_stream_key_123","videoCodec":"H264","isDefault":false}

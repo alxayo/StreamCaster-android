@@ -1,0 +1,1 @@
+{"v":1,"name":"Test SRT Ingest","url":"srt://192.168.0.12:9000","videoCodec":"H265","srtPassphrase":"testpassphrase10","srtKeyLength":"AES_256","srtLatencyMs":250,"srtMode":"CALLER","srtStreamId":"#!::m=publish,r=live/test"}
