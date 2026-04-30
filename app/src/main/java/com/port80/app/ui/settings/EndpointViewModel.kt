@@ -20,12 +20,12 @@ import javax.inject.Inject
 @HiltViewModel
 class EndpointViewModel @Inject constructor(
     private val profileRepository: EndpointProfileRepository,
-    activeStreamStateProvider: ActiveStreamStateProvider
+    private val activeStreamStateProvider: ActiveStreamStateProvider
 ) : ViewModel() {
 
     /** All saved profiles, observed by the UI. */
     val profiles: StateFlow<List<EndpointProfile>> = profileRepository.getAll()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Currently selected profile for editing. */
     private val _editingProfile = MutableStateFlow<EndpointProfile?>(null)
@@ -73,7 +73,7 @@ class EndpointViewModel @Inject constructor(
 
     /** Parse a raw QR result and move it into confirmation/editing UI. */
     fun onQrScanned(rawText: String) {
-        if (isStreamActive.value) {
+        if (activeStreamStateProvider.isStreamActive.value) {
             _importDialogState.value = EndpointImportDialogState.BlockedStreamActive
             return
         }

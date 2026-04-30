@@ -31,7 +31,7 @@
 - QR endpoint import may use CameraX and bundled ML Kit barcode scanning (`com.google.mlkit:barcode-scanning`) in both `foss` and `gms` flavors.
 - This exception is limited to the settings endpoint-import scanner. Streaming, preview, encoder setup, and service code must continue to use RootEncoder's `RtmpCamera2` path.
 - QR scanning must be blocked while a stream or preview-owned camera session is active. The scanner reads `ActiveStreamStateProvider` and never opens the streaming camera.
-- Bundled ML Kit is intentionally accepted in the `foss` flavor for offline QR scanning. It is not the same as adding Play Services runtime APIs, and `play-services-*` dependencies remain forbidden in `foss`.
+- Bundled ML Kit is intentionally accepted in the `foss` flavor for offline QR scanning. Its required `com.google.android.gms:*` transitive dependencies are allowlisted only as part of the ML Kit barcode-scanning subtree; do not add unrelated Play Services APIs to `foss`.
 
 ## Security — Hard Rules
 
@@ -74,7 +74,7 @@ Always branch on `Build.VERSION.SDK_INT` for API-conditional behavior:
 # Unit tests
 ./gradlew testFossDebugUnitTest
 
-# F-Droid GMS check: bundled ML Kit is allowlisted, but play-services-* must not appear
+# F-Droid GMS check: matches must be limited to bundled ML Kit and its transitive support artifacts
 ./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"
 
 # Instrumented tests

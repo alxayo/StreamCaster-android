@@ -8,8 +8,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -130,47 +129,34 @@ fun QrScannerScreen(
 private fun QrCameraPreview(onQrScanned: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val latestOnQrScanned by rememberUpdatedState(onQrScanned)
-    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    val latestOnQrScanned = rememberUpdatedState(onQrScanned)
     val analyzer = remember {
-        QrCodeAnalyzer { rawValue -> latestOnQrScanned(rawValue) }
+        QrCodeAnalyzer { rawValue -> latestOnQrScanned.value(rawValue) }
+    }
+    val cameraController = remember(context) {
+        LifecycleCameraController(context).apply {
+            // The QR scanner needs only image analysis. PreviewView displays the
+            // camera feed, and ML Kit receives frames through the analyzer below.
+            cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            setImageAnalysisAnalyzer(ContextCompat.getMainExecutor(context), analyzer)
+        }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(lifecycleOwner, cameraController) {
+        cameraController.bindToLifecycle(lifecycleOwner)
         onDispose {
             // Release CameraX and ML Kit when the user leaves the scanner.
-            runCatching { cameraProviderFuture.get().unbindAll() }
+            cameraController.clearImageAnalysisAnalyzer()
+            cameraController.unbind()
             analyzer.close()
         }
     }
 
     AndroidView(
         factory = { viewContext ->
-            val previewView = PreviewView(viewContext)
-            val preview = Preview.Builder().build().also { cameraPreview ->
-                cameraPreview.setSurfaceProvider(previewView.surfaceProvider)
+            PreviewView(viewContext).apply {
+                controller = cameraController
             }
-            val imageAnalysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also { analysis ->
-                    analysis.setAnalyzer(ContextCompat.getMainExecutor(viewContext), analyzer)
-                }
-
-            cameraProviderFuture.addListener(
-                {
-                    val cameraProvider = cameraProviderFuture.get()
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        imageAnalysis
-                    )
-                },
-                ContextCompat.getMainExecutor(viewContext)
-            )
-            previewView
         },
         modifier = Modifier.fillMaxSize()
     )

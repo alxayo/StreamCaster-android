@@ -2,7 +2,7 @@
 
 **StreamCaster** is a free, open-source native Android application for live streaming camera and microphone input to RTMP, RTMPS, and SRT ingestion endpoints. It is designed for creators, developers, and self-hosters who need a lightweight, privacy-respecting live streaming tool.
 
-**Distribution channels:** Google Play Store (`gms` flavor), F-Droid (`foss` flavor, no Play Services runtime APIs), and direct APK sideloading. The `foss` flavor intentionally includes bundled ML Kit barcode scanning for offline QR endpoint import.
+**Distribution channels:** Google Play Store (`gms` flavor), F-Droid (`foss` flavor, no unrelated Play Services APIs), and direct APK sideloading. The `foss` flavor intentionally includes bundled ML Kit barcode scanning and its required transitive support artifacts for offline QR endpoint import.
 
 ---
 
@@ -55,7 +55,7 @@ SRT listener and rendezvous modes are available but marked experimental.
 - **Live HUD** — displays bitrate, FPS, resolution, session duration, connection state, protocol badge, and codec badge.
 - **Local Recording** — optional concurrent MP4 recording (API 29+ via MediaStore, API 23–28 via external files).
 - **Audio-Only / Video-Only** — flexible media mode selection per stream.
-- **Product Flavors** — `foss` (F-Droid, no Play Services runtime APIs; bundled ML Kit QR scanner) and `gms` (Play Store).
+- **Product Flavors** — `foss` (F-Droid; bundled ML Kit QR scanner allowlisted) and `gms` (Play Store).
 
 ---
 
@@ -242,7 +242,7 @@ StreamCaster has two product flavors and two build types, giving four build vari
 
 | Variant | Flavor | Build Type | Application ID | Use Case |
 |---------|--------|-----------|----------------|----------|
-| `fossDebug` | foss | debug | `com.port80.app.foss` | Local testing, F-Droid (no Play Services runtime APIs) |
+| `fossDebug` | foss | debug | `com.port80.app.foss` | Local testing, F-Droid (bundled ML Kit QR scanner allowlisted) |
 | `fossRelease` | foss | release | `com.port80.app.foss` | F-Droid distribution |
 | `gmsDebug` | gms | debug | `com.port80.app` | Local testing with Google Play Services |
 | `gmsRelease` | gms | release | `com.port80.app` | Google Play Store |
@@ -297,12 +297,13 @@ app/build/outputs/apk/gms/release/app-gms-release.apk
 ./gradlew testFossDebugUnitTest
 ```
 
-#### Verify F-Droid Compliance (FOSS Flavor Has No Play Services)
+#### Verify F-Droid Compliance (FOSS Flavor Allowlist)
 
 ```bash
 ./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"
 # Expected: bundled com.google.mlkit:barcode-scanning may appear.
-# Not allowed: any play-services-* artifact.
+# Expected: ML Kit's required com.google.android.gms transitive artifacts may appear under that subtree.
+# Not allowed: unrelated Play Services APIs outside the QR scanner dependency tree.
 ```
 
 ### 6.4 Build from Android Studio
@@ -703,7 +704,7 @@ Runs on every push to `main` and every pull request targeting `main`:
 2. Sets up JDK 17.
 3. Builds both `fossDebug` and `gmsDebug` APKs.
 4. Runs `testFossDebugUnitTest`.
-5. Verifies the FOSS flavor has no Play Services runtime artifacts; bundled ML Kit barcode scanning is allowlisted for offline QR import.
+5. Verifies the FOSS flavor dependency matches are limited to bundled ML Kit barcode scanning and its required transitive support artifacts.
 
 #### `release-apk.yml` — Release APK
 

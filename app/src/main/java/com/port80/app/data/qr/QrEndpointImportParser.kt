@@ -82,42 +82,44 @@ object QrEndpointImportParser {
         )
     )
 
-    private fun parseJson(rawJson: String): QrEndpointParseResult = try {
-        val json = JSONObject(rawJson)
-        val unknownKeys = json.keys().asSequence().filterNot { it in allowedJsonKeys }.toList()
-        if (unknownKeys.isNotEmpty()) {
-            return QrEndpointParseResult.Invalid("Unsupported QR fields: ${unknownKeys.joinToString()}")
+    private fun parseJson(rawJson: String): QrEndpointParseResult {
+        return try {
+            val json = JSONObject(rawJson)
+            val unknownKeys = json.keys().asSequence().filterNot { it in allowedJsonKeys }.toList()
+            if (unknownKeys.isNotEmpty()) {
+                return QrEndpointParseResult.Invalid("Unsupported QR fields: ${unknownKeys.joinToString()}")
+            }
+
+            val version = json.optInt("v", -1)
+            if (version != SCHEMA_VERSION) {
+                return QrEndpointParseResult.Invalid("Unsupported QR schema version: $version")
+            }
+
+            val normalized = normalizeEndpointParts(
+                rawUrl = json.optStringOrNull("url"),
+                rawStreamKey = json.optStringOrNull("streamKey")
+            ) ?: return QrEndpointParseResult.Invalid("Endpoint URL is missing or unsupported")
+
+            val protocol = StreamProtocol.fromUrl(normalized.url)
+            val candidate = QrEndpointImportCandidate(
+                name = json.optStringOrNull("name") ?: defaultNameFor(protocol),
+                url = normalized.url,
+                streamKey = if (protocol == StreamProtocol.SRT) "" else normalized.streamKey,
+                username = if (protocol == StreamProtocol.SRT) null else json.optStringOrNull("username"),
+                password = if (protocol == StreamProtocol.SRT) null else json.optStringOrNull("password"),
+                videoCodec = parseVideoCodec(json.optStringOrNull("videoCodec"), protocol),
+                srtPassphrase = if (protocol == StreamProtocol.SRT) json.optStringOrNull("srtPassphrase") else null,
+                srtKeyLength = SrtKeyLength.fromString(json.optStringOrNull("srtKeyLength")),
+                srtLatencyMs = json.optIntOrNull("srtLatencyMs") ?: 120,
+                srtMode = SrtMode.fromString(json.optStringOrNull("srtMode")),
+                srtStreamId = if (protocol == StreamProtocol.SRT) json.optStringOrNull("srtStreamId") else null,
+                requestedDefault = json.optBooleanOrFalse("isDefault")
+            )
+
+            validateCandidate(candidate)
+        } catch (e: Exception) {
+            QrEndpointParseResult.Invalid("QR code is not valid endpoint JSON")
         }
-
-        val version = json.optInt("v", -1)
-        if (version != SCHEMA_VERSION) {
-            return QrEndpointParseResult.Invalid("Unsupported QR schema version: $version")
-        }
-
-        val normalized = normalizeEndpointParts(
-            rawUrl = json.optStringOrNull("url"),
-            rawStreamKey = json.optStringOrNull("streamKey")
-        ) ?: return QrEndpointParseResult.Invalid("Endpoint URL is missing or unsupported")
-
-        val protocol = StreamProtocol.fromUrl(normalized.url)
-        val candidate = QrEndpointImportCandidate(
-            name = json.optStringOrNull("name") ?: defaultNameFor(protocol),
-            url = normalized.url,
-            streamKey = if (protocol == StreamProtocol.SRT) "" else normalized.streamKey,
-            username = if (protocol == StreamProtocol.SRT) null else json.optStringOrNull("username"),
-            password = if (protocol == StreamProtocol.SRT) null else json.optStringOrNull("password"),
-            videoCodec = parseVideoCodec(json.optStringOrNull("videoCodec"), protocol),
-            srtPassphrase = if (protocol == StreamProtocol.SRT) json.optStringOrNull("srtPassphrase") else null,
-            srtKeyLength = SrtKeyLength.fromString(json.optStringOrNull("srtKeyLength")),
-            srtLatencyMs = json.optIntOrNull("srtLatencyMs") ?: 120,
-            srtMode = SrtMode.fromString(json.optStringOrNull("srtMode")),
-            srtStreamId = if (protocol == StreamProtocol.SRT) json.optStringOrNull("srtStreamId") else null,
-            requestedDefault = json.optBooleanOrFalse("isDefault")
-        )
-
-        validateCandidate(candidate)
-    } catch (e: Exception) {
-        QrEndpointParseResult.Invalid("QR code is not valid endpoint JSON")
     }
 
     private fun parsePlainUrl(rawUrl: String): QrEndpointParseResult {

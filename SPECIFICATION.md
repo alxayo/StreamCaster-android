@@ -34,7 +34,7 @@ The following are explicitly out of scope for the current version:
 - Stream scheduling.
 - Analytics or tracking SDKs.
 - Ads or in-app purchases.
-- Play Services runtime dependencies in the `foss` build flavor. Bundled ML Kit barcode scanning is an explicit exception for offline QR endpoint import.
+- Unrelated Play Services runtime APIs in the `foss` build flavor. Bundled ML Kit barcode scanning and its required transitive support artifacts are an explicit exception for offline QR endpoint import.
 - Tablet or Chromebook-optimized UI.
 
 ---
@@ -655,9 +655,9 @@ android {
 | Flavor | Play Store | F-Droid | Direct APK | GMS allowed |
 |---|---|---|---|---|
 | `gms` | Yes | No | Yes | Yes |
-| `foss` | Yes | Yes | Yes | **No Play Services runtime APIs; bundled ML Kit barcode scanning allowed** |
+| `foss` | Yes | Yes | Yes | **Bundled ML Kit barcode scanning subtree allowlisted; no unrelated Play Services APIs** |
 
-**Rule:** No `play-services-*`, Firebase, or other Play Services runtime APIs may appear in the `foss` dependency tree. Bundled `com.google.mlkit:barcode-scanning` is intentionally allowed for offline QR endpoint import. CI must verify this via `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"`; `mlkit` may appear, but `play-services-*` must not.
+**Rule:** Bundled `com.google.mlkit:barcode-scanning` and the `com.google.android.gms:*` artifacts it brings transitively are intentionally allowed for offline QR endpoint import in `foss`. Firebase and unrelated Play Services APIs remain forbidden. CI must verify this via `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"`; all matches must belong to the ML Kit barcode-scanning dependency subtree.
 
 **F-Droid APK size:** To keep per-download size within the 15 MB target (NF-05), configure Gradle ABI splits for the `foss` release variant. A universal APK including all four RootEncoder native ABI variants would exceed 15 MB.
 
@@ -739,7 +739,7 @@ F-Droid supports multi-APK submissions. The 15 MB target applies per-ABI APK, no
 | OEM battery optimization kills foreground service | Silent stream death | Do not silently restart. Notify user on next launch. Use `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`; display OEM-specific guidance. |
 | FGS start restrictions (API 31+) | Cannot start streaming from background | FGS starts only from user-initiated actions while activity is foregrounded or via notification action. Auto-reconnect operates within an already-running FGS only. |
 | Encoder does not support requested config | Crash or silent failure on stream start | Pre-flight validate against `MediaCodecInfo` before connecting. Fail fast with actionable suggestion. |
-| F-Droid build rejected due to forbidden Play Services dependencies | Cannot distribute on F-Droid | Use Gradle product flavors (`foss` / `gms`). CI allows bundled ML Kit barcode scanning for QR import but rejects `play-services-*` in `foss`. See §16.1. |
+| F-Droid build rejected due to forbidden Play Services dependencies | Cannot distribute on F-Droid | Use Gradle product flavors (`foss` / `gms`). CI allows the bundled ML Kit barcode-scanning subtree for QR import but rejects unrelated Play Services APIs in `foss`. See §16.1. |
 | Concurrent ABR + thermal encoder restart | FGS crash from `MediaCodec.IllegalStateException` when both systems trigger an encoder re-init simultaneously | All quality-change requests serialized through `EncoderController` with a coroutine `Mutex`. See §8.2. |
 | Stream key exfiltration via Intent extra | Credentials visible via `adb shell dumpsys activity service` or captured in ACRA crash report Intent bundle | FGS start `Intent` carries only a profile ID; credentials fetched internally from `EndpointProfileRepository`. See §9.1. |
 | EncryptedSharedPreferences restore failure | On a new device after backup restore, Keystore key is absent; app throws `SecurityException` and all credentials are silently lost | Declare `android:allowBackup="false"` or configure `BackupAgent` exclusion rules; prompt user to re-enter credentials. See §9.1. |
