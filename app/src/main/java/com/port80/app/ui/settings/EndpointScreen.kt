@@ -1,5 +1,6 @@
 package com.port80.app.ui.settings
 
+import android.content.pm.PackageManager
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
@@ -32,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -64,14 +68,32 @@ import com.port80.app.data.model.VideoCodec
 @Composable
 fun EndpointScreen(
     viewModel: EndpointViewModel = hiltViewModel(),
+    qrScanResult: String? = null,
+    onQrScanResultConsumed: () -> Unit = {},
+    onNavigateToQrScanner: () -> Unit = {},
     onNavigateBack: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     // Collect the list of saved profiles and the currently-editing profile from the ViewModel.
     val profiles by viewModel.profiles.collectAsState()
     val editingProfile by viewModel.editingProfile.collectAsState()
+    val importDialogState by viewModel.importDialogState.collectAsState()
+    val isStreamActive by viewModel.isStreamActive.collectAsState()
+    val hasCamera = remember(context) {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+    }
 
     // Track which profile the user wants to delete (shows confirmation dialog).
     var profileToDelete by remember { mutableStateOf<EndpointProfile?>(null) }
+    var showAddOptions by remember { mutableStateOf(false) }
+
+    // Navigation returns raw QR text through savedStateHandle. Consume it once
+    // so recomposition does not import the same QR code repeatedly.
+    LaunchedEffect(qrScanResult) {
+        val rawText = qrScanResult ?: return@LaunchedEffect
+        viewModel.onQrScanned(rawText)
+        onQrScanResultConsumed()
+    }
 
     Scaffold(
         topBar = {
@@ -87,9 +109,9 @@ fun EndpointScreen(
                 }
             )
         },
-        // Floating button to create a new profile.
+        // Floating button opens a small chooser: manual entry or QR scan.
         floatingActionButton = {
-            FloatingActionButton(onClick = { viewModel.newProfile() }) {
+            FloatingActionButton(onClick = { showAddOptions = true }) {
                 Icon(Icons.Default.Add, contentDescription = "Add profile")
             }
         }
@@ -122,6 +144,22 @@ fun EndpointScreen(
         }
     }
 
+    if (showAddOptions) {
+        AddEndpointOptionsDialog(
+            hasCamera = hasCamera,
+            isStreamActive = isStreamActive,
+            onManualEntry = {
+                showAddOptions = false
+                viewModel.newProfile()
+            },
+            onScanQr = {
+                showAddOptions = false
+                onNavigateToQrScanner()
+            },
+            onDismiss = { showAddOptions = false }
+        )
+    }
+
     // ── Edit Dialog ─────────────────────────────────────────────
     // When editingProfile is non-null the ViewModel wants us to show the editor.
     editingProfile?.let { profile ->
@@ -143,6 +181,139 @@ fun EndpointScreen(
             onDismiss = { profileToDelete = null }
         )
     }
+
+    when (val state = importDialogState) {
+        EndpointImportDialogState.None -> Unit
+        EndpointImportDialogState.BlockedStreamActive -> MessageDialog(
+            title = "Scanner Unavailable",
+            message = "Stop the current stream before scanning a QR code.",
+            onDismiss = { viewModel.dismissImportDialog() }
+        )
+        is EndpointImportDialogState.InvalidPayload -> MessageDialog(
+            title = "Invalid QR Code",
+            message = state.reason,
+            onDismiss = { viewModel.dismissImportDialog() }
+        )
+        is EndpointImportDialogState.ConfirmDuplicateUpdate -> ConfirmDuplicateDialog(
+            existingName = state.existingName,
+            onConfirm = { viewModel.confirmDuplicateUpdate() },
+            onDismiss = { viewModel.dismissImportDialog() }
+        )
+        EndpointImportDialogState.ConfirmDefault -> ConfirmDefaultDialog(
+            onConfirm = { viewModel.confirmDefaultImport(applyAsDefault = true) },
+            onSkip = { viewModel.confirmDefaultImport(applyAsDefault = false) },
+            onDismiss = { viewModel.dismissImportDialog() }
+        )
+    }
+}
+
+// ── Add Options Dialog ──────────────────────────────────────────
+
+/** Lets the user choose whether to type an endpoint or scan a QR code. */
+@Composable
+private fun AddEndpointOptionsDialog(
+    hasCamera: Boolean,
+    isStreamActive: Boolean,
+    onManualEntry: () -> Unit,
+    onScanQr: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Endpoint") },
+        text = {
+            Column {
+                TextButton(onClick = onManualEntry, modifier = Modifier.fillMaxWidth()) {
+                    Text("Manual Entry")
+                }
+                TextButton(
+                    onClick = onScanQr,
+                    enabled = hasCamera && !isStreamActive,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Scan QR Code")
+                }
+                if (!hasCamera) {
+                    Text(
+                        text = "This device has no camera, so QR scanning is unavailable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (isStreamActive) {
+                    Text(
+                        text = "Stop the current stream or preview before scanning.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+/** Simple message dialog for import errors and blocked scanner state. */
+@Composable
+private fun MessageDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("OK") }
+        }
+    )
+}
+
+/** Asks before replacing saved endpoint fields with QR-provided fields. */
+@Composable
+private fun ConfirmDuplicateDialog(
+    existingName: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Update Existing Endpoint?") },
+        text = {
+            Text("A matching endpoint named \"$existingName\" already exists. Update its URL and credentials with the scanned values?")
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Update") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+/** QR payloads can request default status, but the user must approve it. */
+@Composable
+private fun ConfirmDefaultDialog(
+    onConfirm: () -> Unit,
+    onSkip: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set as Default?") },
+        text = { Text("The QR code requests this endpoint as the default. Apply that setting?") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Set Default") }
+        },
+        dismissButton = {
+            TextButton(onClick = onSkip) { Text("Not Now") }
+        }
+    )
 }
 
 // ── Profile Card ────────────────────────────────────────────────
