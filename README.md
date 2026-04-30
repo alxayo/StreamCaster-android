@@ -2,7 +2,7 @@
 
 **StreamCaster** is a free, open-source native Android application for live streaming camera and microphone input to RTMP, RTMPS, and SRT ingestion endpoints. It is designed for creators, developers, and self-hosters who need a lightweight, privacy-respecting live streaming tool.
 
-**Distribution channels:** Google Play Store (`gms` flavor), F-Droid (`foss` flavor, zero Google dependencies), and direct APK sideloading.
+**Distribution channels:** Google Play Store (`gms` flavor), F-Droid (`foss` flavor, no Play Services runtime APIs), and direct APK sideloading. The `foss` flavor intentionally includes bundled ML Kit barcode scanning for offline QR endpoint import.
 
 ---
 
@@ -50,11 +50,12 @@ SRT listener and rendezvous modes are available but marked experimental.
 - **Adaptive Bitrate (ABR)** — codec-specific quality ladders with automatic adjustment based on network conditions.
 - **Thermal Management** — monitors device temperature and reduces encoder load to prevent overheating. 60-second cooldown between encoder restarts.
 - **Multiple Endpoint Profiles** — save and switch between streaming targets with encrypted credential storage.
+- **QR Endpoint Import** — scan versioned endpoint QR codes to prefill RTMP, RTMPS, or SRT profiles; the user reviews and saves before credentials are stored.
 - **Background Streaming** — continues via foreground service when the app is backgrounded.
 - **Live HUD** — displays bitrate, FPS, resolution, session duration, connection state, protocol badge, and codec badge.
 - **Local Recording** — optional concurrent MP4 recording (API 29+ via MediaStore, API 23–28 via external files).
 - **Audio-Only / Video-Only** — flexible media mode selection per stream.
-- **Product Flavors** — `foss` (F-Droid, zero GMS) and `gms` (Play Store).
+- **Product Flavors** — `foss` (F-Droid, no Play Services runtime APIs; bundled ML Kit QR scanner) and `gms` (Play Store).
 
 ---
 
@@ -67,7 +68,8 @@ SRT listener and rendezvous modes are available but marked experimental.
 | **Architecture** | MVVM (ViewModel + StateFlow) | — |
 | **Dependency Injection** | Hilt | 2.51.1 |
 | **Streaming Engine** | RootEncoder (`RtmpCamera2`, `SrtCamera2`) | 2.5.5 |
-| **Camera** | Camera2 (via RootEncoder) | — |
+| **Camera** | Camera2 via RootEncoder for streaming; CameraX only for QR endpoint import | — |
+| **QR Scanner** | CameraX + bundled ML Kit barcode scanning | CameraX 1.3.4 / ML Kit 17.3.0 |
 | **Navigation** | Jetpack Navigation Compose | 2.8.5 |
 | **Settings Storage** | Jetpack DataStore Preferences | 1.1.1 |
 | **Credential Storage** | EncryptedSharedPreferences (Keystore-backed) | 1.1.0-alpha06 |
@@ -128,11 +130,12 @@ StreamCaster follows a single-activity MVVM architecture with Hilt dependency in
 | Credentials and profiles | `EndpointProfileRepository` | EncryptedSharedPreferences |
 | Device capabilities | `DeviceCapabilityQuery` | Read-only Camera2 + MediaCodecList |
 | Encoder quality changes | `EncoderController` | Mutex-serialized coroutine |
+| QR scanner activity gate | `StreamingService` via `ActiveStreamStateProvider` | In-memory `StateFlow<Boolean>` |
 
 ### Key Design Principles
 
 - **StreamingService** is the single source of truth for all stream state. The UI layer is a read-only observer.
-- **RtmpCamera2 / SrtCamera2** (from RootEncoder) is the sole camera owner. No CameraX or Camera1.
+- **RtmpCamera2 / SrtCamera2** (from RootEncoder) is the sole camera owner for streaming and preview. The only CameraX exception is the endpoint QR scanner, which is blocked while RootEncoder owns the camera.
 - All encoder reconfiguration (ABR + thermal) is serialized through **EncoderController** using a coroutine `Mutex`.
 - **ConnectionParams** sealed class keeps protocol logic encapsulated and prevents secret leakage via URL string building.
 - Per-session bridge creation — a new `EncoderBridge` is created for each streaming session, not lazily.
@@ -157,6 +160,7 @@ android/
 │       │       ├── camera/           # Device capability queries (Camera2, MediaCodec)
 │       │       ├── crash/            # ACRA config + CredentialSanitizer
 │       │       ├── data/             # Repositories + data models
+│       │       │   ├── qr/           # QR endpoint import parser
 │       │       │   └── model/        # EndpointProfile, StreamState, StreamConfig, etc.
 │       │       ├── di/               # Hilt DI modules (App, Camera, Data, Service, etc.)
 │       │       ├── navigation/       # Compose NavGraph
@@ -238,12 +242,12 @@ StreamCaster has two product flavors and two build types, giving four build vari
 
 | Variant | Flavor | Build Type | Application ID | Use Case |
 |---------|--------|-----------|----------------|----------|
-| `fossDebug` | foss | debug | `com.port80.app.foss` | Local testing, F-Droid (no GMS) |
+| `fossDebug` | foss | debug | `com.port80.app.foss` | Local testing, F-Droid (no Play Services runtime APIs) |
 | `fossRelease` | foss | release | `com.port80.app.foss` | F-Droid distribution |
 | `gmsDebug` | gms | debug | `com.port80.app` | Local testing with Google Play Services |
 | `gmsRelease` | gms | release | `com.port80.app` | Google Play Store |
 
-> **Recommended for most users:** `fossDebug` — works on all devices, no Google dependencies.
+> **Recommended for most users:** `fossDebug` — works on all devices, includes offline QR scanning, and does not require Play Services.
 
 ### 6.3 Build from Command Line
 
@@ -293,11 +297,12 @@ app/build/outputs/apk/gms/release/app-gms-release.apk
 ./gradlew testFossDebugUnitTest
 ```
 
-#### Verify F-Droid Compliance (FOSS Flavor Has No GMS)
+#### Verify F-Droid Compliance (FOSS Flavor Has No Play Services)
 
 ```bash
-./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms
-# Must return zero matches
+./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"
+# Expected: bundled com.google.mlkit:barcode-scanning may appear.
+# Not allowed: any play-services-* artifact.
 ```
 
 ### 6.4 Build from Android Studio
@@ -531,6 +536,7 @@ On first launch, StreamCaster requests permissions as needed:
 
 1. **Camera** and **Microphone** — requested when you tap **Start** for the first time.
 2. **Notifications** (Android 13+) — requested before starting the foreground service.
+3. **Camera for QR import** — requested only after you choose **Scan QR Code** in the endpoint add flow.
 
 If you deny a permission, the app will show a rationale dialog. You can grant permissions later in system Settings → Apps → StreamCaster → Permissions.
 
@@ -541,6 +547,8 @@ If you deny a permission, the app will show a rationale dialog. You can grant pe
    - URL: `rtmp://192.168.0.12:1935/live`
    - Stream key: `test`
 3. Tap a profile to **edit**, or tap **+** to create a new one.
+   - Choose **Manual Entry** to type the endpoint fields yourself.
+   - Choose **Scan QR Code** to scan a versioned QR payload. Scanning is disabled while a stream or preview owns the camera.
 4. Fill in:
    - **Name** — a label for this endpoint.
    - **URL** — your streaming server address. The protocol is auto-detected from the URL scheme:
@@ -550,7 +558,25 @@ If you deny a permission, the app will show a rationale dialog. You can grant pe
    - **Stream Key** (RTMP/RTMPS only) — provided by your streaming platform.
    - **SRT fields** (SRT only) — passphrase, stream ID, latency, mode (caller/listener/rendezvous).
    - **Video Codec** — H.264 (default), H.265, or AV1. Availability depends on device hardware.
-5. **Set as default** — mark the profile you want to stream to by default.
+5. If a scanned QR matches an existing endpoint, StreamCaster asks before updating the saved URL and credentials.
+6. If a scanned QR requests default status, StreamCaster asks before applying it.
+7. **Set as default** — mark the profile you want to stream to by default.
+
+#### QR Endpoint Payload Format
+
+QR import accepts either a plain endpoint URL or a versioned JSON object. RTMP/RTMPS URLs may include the stream key as the final path segment; StreamCaster splits it into `URL` and `Stream Key` before showing the editor.
+
+```json
+{
+   "v": 1,
+   "name": "Main Channel",
+   "url": "rtmps://live.example.com/app/live_key_123",
+   "videoCodec": "H264",
+   "isDefault": false
+}
+```
+
+Supported JSON fields: `v`, `name`, `url`, `streamKey`, `username`, `password`, `videoCodec`, `srtPassphrase`, `srtKeyLength`, `srtLatencyMs`, `srtMode`, `srtStreamId`, and `isDefault`.
 
 ### 8.3 Start Streaming
 
@@ -618,7 +644,7 @@ The ABR system adjusts bitrate automatically based on network conditions. Resolu
 
 | Permission | Required From | Purpose |
 |------------|---------------|---------|
-| `CAMERA` | API 23+ | Capture video from the device camera |
+| `CAMERA` | API 23+ | Capture video from the device camera; scan endpoint QR codes |
 | `RECORD_AUDIO` | API 23+ | Capture audio from the microphone |
 | `INTERNET` | All | Send stream data to the ingestion server |
 | `ACCESS_NETWORK_STATE` | All | Detect network changes for reconnection |
@@ -637,6 +663,8 @@ Hardware features (`camera`, `camera.autofocus`, `microphone`) are declared as `
 ### Credential Storage
 
 All stream keys, passwords, SRT passphrases, and auth tokens are stored in **EncryptedSharedPreferences** backed by the Android Keystore. There is no fallback to plain SharedPreferences — if encryption fails, the user sees an error.
+
+QR endpoint payloads are treated as untrusted input. The app parses only known v1 fields, never silently applies default-profile changes, and routes parsed credentials through the normal encrypted endpoint editor/save path.
 
 ### Intent Security
 
@@ -675,7 +703,7 @@ Runs on every push to `main` and every pull request targeting `main`:
 2. Sets up JDK 17.
 3. Builds both `fossDebug` and `gmsDebug` APKs.
 4. Runs `testFossDebugUnitTest`.
-5. Verifies FOSS flavor has zero GMS dependencies (F-Droid compliance).
+5. Verifies the FOSS flavor has no Play Services runtime artifacts; bundled ML Kit barcode scanning is allowlisted for offline QR import.
 
 #### `release-apk.yml` — Release APK
 

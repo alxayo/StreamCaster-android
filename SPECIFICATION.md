@@ -34,7 +34,7 @@ The following are explicitly out of scope for the current version:
 - Stream scheduling.
 - Analytics or tracking SDKs.
 - Ads or in-app purchases.
-- GMS dependencies in the `foss` build flavor.
+- Play Services runtime dependencies in the `foss` build flavor. Bundled ML Kit barcode scanning is an explicit exception for offline QR endpoint import.
 - Tablet or Chromebook-optimized UI.
 
 ---
@@ -45,7 +45,7 @@ The following are explicitly out of scope for the current version:
 |---|---|---|
 | **Language** | **Kotlin** | Modern, concise, null-safe. RootEncoder is 65% Kotlin-native, ensuring seamless interop. |
 | **Streaming Library** | **RootEncoder v2.7.x** (Apache 2.0) | Actively maintained (daily commits as of March 2026). Supports RTMP, RTMPS, RTSP, SRT. Provides Camera2 integration, adaptive bitrate, H.264/H.265/AAC encoding. |
-| **Camera Framework** | **RootEncoder `RtmpCamera2`** (Camera2 internally) | RootEncoder's built-in camera class is the sole camera owner. No CameraX or Camera1 layering. See §5.3. |
+| **Camera Framework** | **RootEncoder `RtmpCamera2`** (Camera2 internally), with CameraX only for QR endpoint import | RootEncoder's built-in camera class is the sole streaming/preview camera owner. The QR import scanner may use CameraX while RootEncoder is inactive. See §5.3. |
 | **Build System** | **Gradle (Kotlin DSL)** with Android Gradle Plugin 8.x | Standard toolchain, compatible with VS Code + Gradle extension. |
 | **Min SDK** | **API 23 (Android 6.0 Marshmallow)** | Required for EncryptedSharedPreferences (Android Keystore-backed), runtime permissions model, and modern MediaCodec behavior. Covers ~97% of active Android devices. |
 | **Target SDK** | **API 35 (Android 15)** | Required for Google Play Store submission in 2026. |
@@ -242,8 +242,8 @@ The following are explicitly out of scope for the current version:
 
 > **Design decision:** RootEncoder provides optimized, battle-tested camera management classes (`RtmpCamera2`) that tightly couple camera capture with hardware encoding and RTMP muxing. Layering CameraX or a separate Camera2 session on top would risk surface contention, double camera ownership, and pipeline desynchronization.
 >
-> **Therefore, the app uses `RtmpCamera2` exclusively for camera ownership.**
-> - No CameraX dependency.
+> **Therefore, the app uses `RtmpCamera2` exclusively for streaming and preview camera ownership.**
+> - CameraX is allowed only for the endpoint-import QR scanner, and only while no stream or RootEncoder preview owns the camera.
 > - No Camera1 path (minSdk is 23; Camera2 is universally available).
 > - `DeviceCapabilityQuery` only reads `CameraCharacteristics` and `MediaCodecInfo`; it never opens the camera.
 
@@ -655,9 +655,9 @@ android {
 | Flavor | Play Store | F-Droid | Direct APK | GMS allowed |
 |---|---|---|---|---|
 | `gms` | Yes | No | Yes | Yes |
-| `foss` | Yes | Yes | Yes | **No** |
+| `foss` | Yes | Yes | Yes | **No Play Services runtime APIs; bundled ML Kit barcode scanning allowed** |
 
-**Rule:** No `com.google.android.gms`, Firebase, or proprietary library may appear in the `foss` dependency tree. CI must verify this via a `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms` check that fails the build if any match is found.
+**Rule:** No `play-services-*`, Firebase, or other Play Services runtime APIs may appear in the `foss` dependency tree. Bundled `com.google.mlkit:barcode-scanning` is intentionally allowed for offline QR endpoint import. CI must verify this via `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"`; `mlkit` may appear, but `play-services-*` must not.
 
 **F-Droid APK size:** To keep per-download size within the 15 MB target (NF-05), configure Gradle ABI splits for the `foss` release variant. A universal APK including all four RootEncoder native ABI variants would exceed 15 MB.
 
@@ -739,7 +739,7 @@ F-Droid supports multi-APK submissions. The 15 MB target applies per-ABI APK, no
 | OEM battery optimization kills foreground service | Silent stream death | Do not silently restart. Notify user on next launch. Use `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`; display OEM-specific guidance. |
 | FGS start restrictions (API 31+) | Cannot start streaming from background | FGS starts only from user-initiated actions while activity is foregrounded or via notification action. Auto-reconnect operates within an already-running FGS only. |
 | Encoder does not support requested config | Crash or silent failure on stream start | Pre-flight validate against `MediaCodecInfo` before connecting. Fail fast with actionable suggestion. |
-| F-Droid build rejected due to proprietary dependencies | Cannot distribute on F-Droid | Use Gradle product flavors (`foss` / `gms`). CI verifies no GMS in `foss` dependency tree. See §16.1. |
+| F-Droid build rejected due to forbidden Play Services dependencies | Cannot distribute on F-Droid | Use Gradle product flavors (`foss` / `gms`). CI allows bundled ML Kit barcode scanning for QR import but rejects `play-services-*` in `foss`. See §16.1. |
 | Concurrent ABR + thermal encoder restart | FGS crash from `MediaCodec.IllegalStateException` when both systems trigger an encoder re-init simultaneously | All quality-change requests serialized through `EncoderController` with a coroutine `Mutex`. See §8.2. |
 | Stream key exfiltration via Intent extra | Credentials visible via `adb shell dumpsys activity service` or captured in ACRA crash report Intent bundle | FGS start `Intent` carries only a profile ID; credentials fetched internally from `EndpointProfileRepository`. See §9.1. |
 | EncryptedSharedPreferences restore failure | On a new device after backup restore, Keystore key is absent; app throws `SecurityException` and all credentials are silently lost | Declare `android:allowBackup="false"` or configure `BackupAgent` exclusion rules; prompt user to re-enter credentials. See §9.1. |

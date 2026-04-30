@@ -245,7 +245,7 @@ data class Resolution(val width: Int, val height: Int) {
 | T-030 | Camera Switching (Service Logic) | Front ↔ back via `RtmpCamera2.switchCamera()` before and during stream. Service-side implementation only. UI button wiring deferred to T-012 | In: camera switch service logic. Out: UI button (wired in T-012) | Spec §4.1 MC-02 | Camera switch in `StreamingService` | T-007b | Yes (after T-007b) | Android | S (0.5d) | Low | `./gradlew testFossDebugUnitTest --tests '*CameraSwitch*'` | `service/StreamingService.kt` |
 | T-031 | Prolonged Session Monitor | On low-end devices (`isLowRamDevice` or < 2GB RAM), warn after configurable duration (default 90 min). Suppress if charging | In: session monitor. Out: — | Spec §11 (Prolonged session) | Logic in `StreamingService` | T-007a, T-023 | Yes (after T-007a) | Android | S (0.5d) | Low | `./gradlew testFossDebugUnitTest --tests '*SessionMonitor*'` | `service/StreamingService.kt` |
 | T-032 | Manifest Hardening & Backup Rules | `android:allowBackup="false"` or BackupAgent excluding encrypted prefs. All FGS type declarations, permissions. Credential re-entry prompt on restore failure | In: manifest. Out: — | Spec §9.1, §9.4, §7.1 | `AndroidManifest.xml` hardening | T-001 | Yes | Security | S (0.5d) | Medium | Grep for `allowBackup`, `foregroundServiceType`, all required permissions | `AndroidManifest.xml` |
-| T-033 | F-Droid / FOSS Flavor CI Verification | CI step: `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms` must return empty. ABI split config for `foss` | In: CI. Out: — | Spec §16.1 | CI workflow file | T-001 | Yes | DevOps | S (0.5d) | Low | `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath \| grep -i gms` returns 0 matches | `.github/workflows/`, `build.gradle.kts` |
+| T-033 | F-Droid / FOSS Flavor CI Verification | CI step: `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"` must show only allowlisted bundled ML Kit and no `play-services-*`. ABI split config for `foss` | In: CI. Out: — | Spec §16.1 | CI workflow file | T-001 | Yes | DevOps | S (0.5d) | Low | dependency check shows bundled ML Kit only; no `play-services-*` | `.github/workflows/`, `build.gradle.kts` |
 | T-034 | ProGuard / R8 Rules | R8 config for release builds. RootEncoder ProGuard rules. EncryptedSharedPreferences keep rules. ACRA keep rules | In: obfuscation. Out: — | Spec §16 | `proguard-rules.pro` | T-001, T-026 | Yes | DevOps | S (0.5d) | Low | `./gradlew assembleFossRelease` succeeds | `proguard-rules.pro` |
 | T-035 | QA Test Matrix & Acceptance Test Suite | Manual test scripts for E2E matrix (3 devices × transports × modes). Automated acceptance tests for AC-01 through AC-19 where possible. **NFR measurements:** startup time < 2s on mid-range device (NF-01), battery drain ≤ 15%/hr during 1080p30 stream (NF-03), per-ABI APK size < 15 MB (NF-05). Record results. Fail QA if Must-level NFRs are not met | In: QA + NFR measurement. Out: — | Spec §5, §15, §20 | Test plan + instrumented tests + NFR measurement report | T-007a through T-042 | No | QA | L (4d) | Medium | `./gradlew connectedFossDebugAndroidTest` | `androidTest/` |
 | T-036 | Intent Security — No Credentials in Extras | FGS start Intent carries only profile ID. Service fetches credentials from EndpointProfileRepository. Verify via test that no key/password appears in Intent | In: security. Out: — | Spec §9.1, AC-13 | Enforcement in `StreamingService` start path | T-005, T-007a | No | Security | S (0.5d) | High | `./gradlew testFossDebugUnitTest --tests '*IntentSecurity*'` | `service/StreamingService.kt`, `ui/stream/StreamViewModel.kt` |
@@ -459,7 +459,7 @@ graph TD
 **Success Criteria:**
 - `./gradlew assembleFossDebug` compiles successfully.
 - `./gradlew assembleGmsDebug` compiles successfully.
-- `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms` returns zero matches.
+- `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"` shows only allowlisted bundled ML Kit and no `play-services-*`.
 - App launches on an emulator showing an empty Compose screen.
 
 ---
@@ -1418,7 +1418,7 @@ interface EncoderBridge {
 - [ ] Stats collection coroutine runs at 1 Hz, not faster.
 
 ### Compliance / Distribution
-- [ ] `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms` returns zero matches.
+- [ ] `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"` shows only allowlisted bundled ML Kit and no `play-services-*`.
 - [ ] `foss` variant builds without GMS dependencies.
 - [ ] `gms` variant builds for Play Store.
 - [ ] ProGuard/R8 rules include RootEncoder, ACRA, EncryptedSharedPreferences keep rules.

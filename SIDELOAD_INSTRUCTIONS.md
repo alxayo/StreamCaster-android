@@ -17,7 +17,7 @@ A concise guide for installing StreamCaster APKs directly onto an Android device
 ## 1. Build the APK
 
 ```bash
-# FOSS debug (recommended — works on all devices, no Google dependencies)
+# FOSS debug (recommended — no Play Services runtime APIs; includes bundled ML Kit QR scanner)
 ./gradlew :app:assembleFossDebug
 
 # GMS debug (with Google Play Services support)
@@ -135,6 +135,16 @@ adb shell pm list packages | grep com.port80.app
 # Check version
 adb shell dumpsys package com.port80.app.foss | grep versionName
 ```
+
+### Verify QR Endpoint Import
+
+1. Open **StreamCaster** → **Settings** → **Streaming Endpoints**.
+2. Tap **+** → **Scan QR Code**.
+3. Grant camera permission if Android asks.
+4. Scan a QR code containing either a plain endpoint URL or v1 endpoint JSON.
+5. Review the prefilled endpoint editor and tap **Save**.
+
+Scanning is unavailable while a stream or preview owns the camera. Stop the stream first, then return to **Streaming Endpoints**.
 
 ---
 

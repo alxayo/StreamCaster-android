@@ -219,7 +219,7 @@ Build the playback screen with anti-capture protection.
 
 1. `./gradlew assembleFossDebug assembleGmsDebug` — both flavors compile
 2. `./gradlew testFossDebugUnitTest` — all unit tests pass (existing + new)
-3. `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i gms` — zero GMS matches (FOSS flavor clean)
+3. `./gradlew :app:dependencies --configuration fossReleaseRuntimeClasspath | grep -i "gms\|play-services\|mlkit"` — bundled ML Kit may appear; `play-services-*` must not
 4. Manual: enable flag → play DASH URL → verify video + anti-capture → disable flag → verify hidden
 5. Manual: verify streaming still works with playback feature both enabled and disabled
 
