@@ -32,6 +32,7 @@ junit = "4.13.2"
 mockk = "1.13.13"
 coroutinesTest = "1.9.0"
 archCoreTesting = "2.2.0"
+json = "20240303"
 
 [libraries]
 # ── Compose BOM (manages all Compose library versions) ──
@@ -80,6 +81,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 arch-core-testing = { group = "androidx.arch.core", name = "core-testing", version.ref = "archCoreTesting" }
+json = { group = "org.json", name = "json", version.ref = "json" }
 
 [plugins]
 # ── Gradle plugins applied in build.gradle.kts ──

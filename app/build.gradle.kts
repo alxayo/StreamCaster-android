@@ -127,4 +127,7 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.arch.core.testing)
+    // Android's org.json classes are stubs in local JVM tests. This lets the
+    // QR parser tests run the same JSON logic without needing an emulator.
+    testImplementation(libs.json)
 }
