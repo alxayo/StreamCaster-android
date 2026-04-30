@@ -69,6 +69,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var encoderBridgeFactory: EncoderBridge.Factory
     @Inject lateinit var deviceCapabilityQuery: DeviceCapabilityQuery
+    @Inject lateinit var activeStreamStateProvider: MutableActiveStreamStateProvider
 
     // -- State (owned exclusively by this service) --
     private val _streamState = MutableStateFlow<StreamState>(StreamState.Idle)
@@ -180,7 +181,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
             return
         }
 
-        _streamState.value = StreamState.Connecting
+        updateStreamState(StreamState.Connecting)
         _lastFailureDetail.value = null
         _streamStats.value = StreamStats()
         isTerminating.set(false)
@@ -207,7 +208,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
 
         RedactingLogger.i(TAG, "Stopping stream (user request)")
         connectionManager?.stop()
-        _streamState.value = StreamState.Stopping
+        updateStreamState(StreamState.Stopping)
         terminateService(StopReason.USER_REQUEST)
     }
 
@@ -215,7 +216,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         val currentState = _streamState.value
         if (currentState is StreamState.Live) {
             val newMuteState = !currentState.isMuted
-            _streamState.value = currentState.copy(isMuted = newMuteState)
+            updateStreamState(currentState.copy(isMuted = newMuteState))
             RedactingLogger.d(TAG, "Mute toggled: $newMuteState")
         }
     }
@@ -251,7 +252,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                 bridge.startPreview(surface, cameraId)
                 applyStabilizationMode(stabMode, cameraId)
 
-                _streamState.value = StreamState.Previewing(cameraId)
+                updateStreamState(StreamState.Previewing(cameraId))
                 RedactingLogger.i(TAG, "Preview started with camera $cameraId, stabilization=$stabMode")
             } catch (e: Exception) {
                 RedactingLogger.e(TAG, "Failed to start preview", e)
@@ -274,7 +275,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         encoderBridge = null
         cameraSwitcher = null
         activeStabilizationMode = StabilizationMode.OFF
-        _streamState.value = StreamState.Idle
+        updateStreamState(StreamState.Idle)
     }
 
     override fun switchCamera() {
@@ -408,7 +409,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                 bridge.startPreview(surface, cameraId)
                 applyStabilizationMode(stabMode, cameraId)
 
-                _streamState.value = StreamState.Previewing(cameraId)
+                updateStreamState(StreamState.Previewing(cameraId))
                 RedactingLogger.i(TAG, "Preview restarted for orientation change")
             } catch (e: Exception) {
                 RedactingLogger.e(TAG, "Failed to restart preview after rotation", e)
@@ -455,7 +456,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         RedactingLogger.i(TAG, "Terminating service: $reason")
 
         cleanupAndStop()
-        _streamState.value = StreamState.Stopped(reason)
+        updateStreamState(StreamState.Stopped(reason))
 
         @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -716,7 +717,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         val state = _streamState.value
         if (state is StreamState.Previewing) {
             val newId = cameraSwitcher?.currentCameraId ?: return
-            _streamState.value = StreamState.Previewing(newId)
+            updateStreamState(StreamState.Previewing(newId))
         }
     }
 
@@ -759,11 +760,11 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         if (cm != null && cm.isReconnecting) {
             // Returning to Live after a reconnect attempt
             cm.notifyReconnectResult(true)
-            _streamState.value = StreamState.Live()
+            updateStreamState(StreamState.Live())
             resumeStatsTicker()
         } else {
             // Initial connection — create and start ConnectionManager
-            _streamState.value = StreamState.Live()
+            updateStreamState(StreamState.Live())
             startStatsTicker()
             createAndStartConnectionManager()
         }
@@ -850,7 +851,7 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         ).apply {
             requestReconnect = { attemptReconnect() }
             onReconnectExhausted = { reason -> terminateService(reason) }
-            onStateChanged = { state -> _streamState.value = state }
+            onStateChanged = { state -> updateStreamState(state) }
         }
         connectionManager?.start()
     }
@@ -877,6 +878,15 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
                 connectionManager?.notifyReconnectResult(false)
             }
         }
+    }
+
+    /**
+     * Single helper for state changes. It updates the service-owned StateFlow
+     * and then publishes the simplified active-camera flag used by Settings.
+     */
+    private fun updateStreamState(state: StreamState) {
+        _streamState.value = state
+        activeStreamStateProvider.publish(state)
     }
 
     /** Create the notification channel (required on Android 8.0+). */
