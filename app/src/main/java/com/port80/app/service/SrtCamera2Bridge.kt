@@ -118,8 +118,9 @@ class SrtCamera2Bridge(
         val audioReady: Boolean
         try {
             videoReady = camera.prepareVideo(
-                config.orientedWidth,
-                config.orientedHeight,
+                // RootEncoder applies the 90/270° dimension swap internally.
+                config.width,
+                config.height,
                 config.fps,
                 config.videoBitrateKbps * 1000,
                 config.keyframeIntervalSec,

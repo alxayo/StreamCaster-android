@@ -12,7 +12,7 @@ import org.junit.Test
  * Tests for orientation-aware encoder configuration and preview dimension handling.
  *
  * Covers:
- * - EncoderConfig oriented dimensions (portrait/landscape)
+ * - EncoderConfig landscape-native dimensions (portrait/landscape)
  * - StubEncoderBridge startPreview with dimensions
  * - EncoderConfig rotation values
  */
@@ -36,28 +36,23 @@ class OrientationTest {
     // ── EncoderConfig orientation tests ──────────────────────────────
 
     @Test
-    fun `EncoderConfig defaults keep width and height for oriented fields`() {
+    fun `EncoderConfig defaults keep landscape-native dimensions`() {
         val config = EncoderConfig(width = 1280, height = 720)
-        assertEquals(1280, config.orientedWidth)
-        assertEquals(720, config.orientedHeight)
+        assertEquals(1280, config.width)
+        assertEquals(720, config.height)
         assertEquals(0, config.rotation)
     }
 
     @Test
-    fun `EncoderConfig with portrait orientation swaps dimensions`() {
+    fun `EncoderConfig with portrait rotation does not pre-swap dimensions`() {
         val config = EncoderConfig(
             width = 1280,
             height = 720,
-            orientedWidth = 720,
-            orientedHeight = 1280,
             rotation = 90
         )
-        assertEquals(720, config.orientedWidth)
-        assertEquals(1280, config.orientedHeight)
-        assertEquals(90, config.rotation)
-        // Original normalized dimensions remain unchanged
         assertEquals(1280, config.width)
         assertEquals(720, config.height)
+        assertEquals(90, config.rotation)
     }
 
     @Test
@@ -65,12 +60,10 @@ class OrientationTest {
         val config = EncoderConfig(
             width = 1920,
             height = 1080,
-            orientedWidth = 1920,
-            orientedHeight = 1080,
             rotation = 0
         )
-        assertEquals(1920, config.orientedWidth)
-        assertEquals(1080, config.orientedHeight)
+        assertEquals(1920, config.width)
+        assertEquals(1080, config.height)
         assertEquals(0, config.rotation)
     }
 
@@ -79,13 +72,11 @@ class OrientationTest {
         val original = EncoderConfig(
             width = 1280,
             height = 720,
-            orientedWidth = 720,
-            orientedHeight = 1280,
             rotation = 90
         )
         val copied = original.copy(videoBitrateKbps = 3000)
-        assertEquals(720, copied.orientedWidth)
-        assertEquals(1280, copied.orientedHeight)
+        assertEquals(1280, copied.width)
+        assertEquals(720, copied.height)
         assertEquals(90, copied.rotation)
         assertEquals(3000, copied.videoBitrateKbps)
     }
@@ -95,11 +86,12 @@ class OrientationTest {
         for (codec in VideoCodec.entries) {
             val config = EncoderConfig(
                 videoCodec = codec,
-                orientedWidth = 720,
-                orientedHeight = 1280,
+                width = 1280,
+                height = 720,
                 rotation = 90
             )
-            assertEquals("$codec should have orientedWidth=720", 720, config.orientedWidth)
+            assertEquals("$codec should keep landscape width", 1280, config.width)
+            assertEquals("$codec should keep landscape height", 720, config.height)
             assertEquals("$codec should have rotation=90", 90, config.rotation)
         }
     }
@@ -133,12 +125,12 @@ class OrientationTest {
         val isPortrait = surfaceHeight > surfaceWidth
         assertTrue(isPortrait)
 
-        val orientedWidth = if (isPortrait) minOf(resWidth, resHeight) else maxOf(resWidth, resHeight)
-        val orientedHeight = if (isPortrait) maxOf(resWidth, resHeight) else minOf(resWidth, resHeight)
+        val encoderWidth = maxOf(resWidth, resHeight)
+        val encoderHeight = minOf(resWidth, resHeight)
         val rotation = if (isPortrait) 90 else 0
 
-        assertEquals(720, orientedWidth)
-        assertEquals(1280, orientedHeight)
+        assertEquals(1280, encoderWidth)
+        assertEquals(720, encoderHeight)
         assertEquals(90, rotation)
     }
 
@@ -152,12 +144,12 @@ class OrientationTest {
         val isPortrait = surfaceHeight > surfaceWidth
         assertFalse(isPortrait)
 
-        val orientedWidth = if (isPortrait) minOf(resWidth, resHeight) else maxOf(resWidth, resHeight)
-        val orientedHeight = if (isPortrait) maxOf(resWidth, resHeight) else minOf(resWidth, resHeight)
+        val encoderWidth = maxOf(resWidth, resHeight)
+        val encoderHeight = minOf(resWidth, resHeight)
         val rotation = if (isPortrait) 90 else 0
 
-        assertEquals(1280, orientedWidth)
-        assertEquals(720, orientedHeight)
+        assertEquals(1280, encoderWidth)
+        assertEquals(720, encoderHeight)
         assertEquals(0, rotation)
     }
 
@@ -202,12 +194,12 @@ class OrientationTest {
 
         val resWidth = 1280
         val resHeight = 720
-        val orientedWidth = if (isPortrait) minOf(resWidth, resHeight) else maxOf(resWidth, resHeight)
-        val orientedHeight = if (isPortrait) maxOf(resWidth, resHeight) else minOf(resWidth, resHeight)
+        val encoderWidth = maxOf(resWidth, resHeight)
+        val encoderHeight = minOf(resWidth, resHeight)
         val rotation = if (isPortrait) 90 else 0
 
-        assertEquals(720, orientedWidth)
-        assertEquals(1280, orientedHeight)
+        assertEquals(1280, encoderWidth)
+        assertEquals(720, encoderHeight)
         assertEquals(90, rotation)
     }
 
