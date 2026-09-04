@@ -19,7 +19,7 @@ sealed class ConnectionParams {
     data class Rtmp(
         /** Base URL: rtmp://host/app or rtmps://host/app (without stream key). */
         val baseUrl: String,
-        /** Stream key appended to the URL path. */
+        /** Optional stream key appended to the URL path when non-blank. */
         val streamKey: String,
         /** Optional RTMP authentication username. */
         val username: String?,

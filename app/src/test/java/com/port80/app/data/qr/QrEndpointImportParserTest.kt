@@ -49,6 +49,28 @@ class QrEndpointImportParserTest {
     }
 
     @Test
+    fun `plain rtmp URL without stream key is accepted`() {
+        val result = QrEndpointImportParser.parse("rtmp://host.example/live")
+
+        assertTrue(result is QrEndpointParseResult.Success)
+        val candidate = (result as QrEndpointParseResult.Success).candidate
+        assertEquals("rtmp://host.example/live", candidate.url)
+        assertEquals("", candidate.streamKey)
+    }
+
+    @Test
+    fun `rtmps json payload may omit stream key`() {
+        val result = QrEndpointImportParser.parse(
+            """{"v":1,"name":"Keyless endpoint","url":"rtmps://host.example/live"}"""
+        )
+
+        assertTrue(result is QrEndpointParseResult.Success)
+        val candidate = (result as QrEndpointParseResult.Success).candidate
+        assertEquals("rtmps://host.example/live", candidate.url)
+        assertEquals("", candidate.streamKey)
+    }
+
+    @Test
     fun `srt json payload maps SRT fields safely`() {
         val rawJson = """
             {

@@ -647,32 +647,23 @@ class StreamingService : Service(), StreamingServiceControl, ConnectChecker {
         } else {
             resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         }
-        val orientedWidth: Int
-        val orientedHeight: Int
-        val rotation: Int
-        if (isPortrait) {
-            // Portrait: swap so the narrower side is width
-            orientedWidth = minOf(resolution.width, resolution.height)
-            orientedHeight = maxOf(resolution.width, resolution.height)
-            rotation = 90
-        } else {
-            orientedWidth = maxOf(resolution.width, resolution.height)
-            orientedHeight = minOf(resolution.width, resolution.height)
-            rotation = 0
-        }
+        // RootEncoder expects landscape-native dimensions and uses rotation to
+        // swap its GL output size for portrait. Keep dimensions normalized even
+        // if a legacy preference happened to persist them in portrait order.
+        val encoderWidth = maxOf(resolution.width, resolution.height)
+        val encoderHeight = minOf(resolution.width, resolution.height)
+        val rotation = if (isPortrait) 90 else 0
 
         return EncoderConfig(
             videoCodec = profile.videoCodec,
-            width = resolution.width,
-            height = resolution.height,
+            width = encoderWidth,
+            height = encoderHeight,
             fps = settingsRepository.getFps().first(),
             videoBitrateKbps = settingsRepository.getVideoBitrateKbps().first(),
             audioBitrateKbps = settingsRepository.getAudioBitrateKbps().first(),
             audioSampleRate = settingsRepository.getAudioSampleRate().first(),
             stereo = settingsRepository.getStereo().first(),
             keyframeIntervalSec = settingsRepository.getKeyframeIntervalSec().first(),
-            orientedWidth = orientedWidth,
-            orientedHeight = orientedHeight,
             rotation = rotation,
         )
     }

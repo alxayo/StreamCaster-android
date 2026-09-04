@@ -559,7 +559,7 @@ private fun EditProfileDialog(
                     OutlinedTextField(
                         value = streamKey,
                         onValueChange = { streamKey = it },
-                        label = { Text("Stream Key") },
+                        label = { Text("Stream Key (optional)") },
                         singleLine = true,
                         visualTransformation = if (streamKeyVisible) {
                             VisualTransformation.None
@@ -739,9 +739,9 @@ private fun EditProfileDialog(
                         )
                     )
                 },
-                // Disable Save unless required fields are filled.
-                // SRT: only name + url required. RTMP: name + url + streamKey.
-                enabled = name.isNotBlank() && url.isNotBlank() && (isSrt || streamKey.isNotBlank())
+                // Stream keys are optional. Some ingest servers accept the
+                // complete publish path directly in the server URL.
+                enabled = name.isNotBlank() && url.isNotBlank()
             ) {
                 Text("Save")
             }

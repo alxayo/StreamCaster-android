@@ -116,8 +116,11 @@ class RtmpCamera2Bridge(
         val audioReady: Boolean
         try {
             videoReady = camera.prepareVideo(
-                config.orientedWidth,
-                config.orientedHeight,
+                // RootEncoder swaps its GL output dimensions for 90/270°.
+                // Passing portrait-swapped dimensions here would swap twice and
+                // stretch a 1080x1920 stream back onto a 1920x1080 surface.
+                config.width,
+                config.height,
                 config.fps,
                 config.videoBitrateKbps * 1000,
                 config.keyframeIntervalSec,

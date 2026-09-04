@@ -10,6 +10,11 @@ import com.port80.app.data.model.VideoCodec
  */
 data class EncoderConfig(
     val videoCodec: VideoCodec = VideoCodec.H264,
+    /**
+     * Landscape-native encoder dimensions. RootEncoder swaps the GL output size
+     * itself when [rotation] is 90 or 270 degrees, so callers must not pre-swap
+     * these values for portrait output.
+     */
     val width: Int = 1280,
     val height: Int = 720,
     val fps: Int = 30,
@@ -18,10 +23,6 @@ data class EncoderConfig(
     val audioSampleRate: Int = 44100,
     val stereo: Boolean = true,
     val keyframeIntervalSec: Int = 2,
-    /** Width oriented for the current display rotation (portrait: swap w↔h). */
-    val orientedWidth: Int = width,
-    /** Height oriented for the current display rotation (portrait: swap w↔h). */
-    val orientedHeight: Int = height,
     /** Display rotation in degrees (0, 90, 180, 270) passed to prepareVideo. */
     val rotation: Int = 0,
 )

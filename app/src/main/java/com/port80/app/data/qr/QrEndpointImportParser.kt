@@ -141,9 +141,6 @@ object QrEndpointImportParser {
         if (!hasSupportedScheme(candidate.url)) {
             return QrEndpointParseResult.Invalid("Only RTMP, RTMPS, and SRT endpoints are supported")
         }
-        if (protocol != StreamProtocol.SRT && candidate.streamKey.isBlank()) {
-            return QrEndpointParseResult.Invalid("RTMP and RTMPS endpoints require a stream key")
-        }
         if (protocol == StreamProtocol.SRT && !candidate.videoCodec.supportsSrt()) {
             return QrEndpointParseResult.Invalid("SRT endpoints support H.264 and H.265 only")
         }

@@ -15,7 +15,7 @@ data class EndpointProfile(
     val name: String,
     /** Server URL — rtmp://, rtmps://, or srt:// scheme. */
     val url: String,
-    /** Stream key that authenticates this specific stream (RTMP/RTMPS only). */
+    /** Optional stream key appended to the RTMP/RTMPS server URL when present. */
     val streamKey: String = "",
     /** Optional username for RTMP authentication. */
     val username: String? = null,
